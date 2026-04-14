@@ -68,172 +68,38 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Check if schedule is enabled
 	if schedule.Spec.Enabled != nil && !*schedule.Spec.Enabled {
-		log.Debug("Schedule is disabled, skipping")
-		schedule.Status.Message = "Schedule is disabled"
-		if err := r.Status().Update(ctx, schedule); err != nil {
-			log.Error("Failed to update status", zap.Error(err))
-		}
-		return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+		return r.handleDisabledSchedule(ctx, schedule, log)
 	}
 
 	// Update valve controller dry-run mode based on schedule spec
 	r.ValveController.SetDryRun(schedule.Spec.DryRun)
 
-	// Find the device by one of the supported identifiers
-	device, err := r.findDevice(ctx, schedule)
+	// Find and validate the device
+	device, result, err := r.findAndValidateDevice(ctx, schedule, log)
 	if err != nil {
-		log.Error("Failed to find device", zap.Error(err))
-		schedule.Status.Message = fmt.Sprintf("Device not found: %s", err.Error())
-		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
-			log.Error("Failed to update status", zap.Error(statusErr))
-		}
-		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+		return result, err
 	}
 
-	// Log which device was found
-	log.Debug("Found device for schedule",
-		zap.String("deviceName", device.Name),
-		zap.String("ieeeAddr", device.Spec.IEEEAddr))
+	// Update resolved device name and power state
+	r.updateDeviceStatus(schedule, device, log)
 
-	// Update resolved device name in status if it changed
-	if schedule.Status.ResolvedDeviceName != device.Name {
-		schedule.Status.ResolvedDeviceName = device.Name
-		// Status will be updated at the end of reconciliation
-	}
-
-	// Update valve power state from device telemetry if available
-	if device.Status.LastPowerState != nil {
-		powerState := int(*device.Status.LastPowerState)
-		if schedule.Status.ValvePowerState == nil || *schedule.Status.ValvePowerState != powerState {
-			schedule.Status.ValvePowerState = &powerState
-			log.Debug("Updated valve power state from device status",
-				zap.Int("powerState", powerState))
-		}
-	}
-
-	// Verify device is a valve
-	if device.Spec.SensorType != "valve" {
-		log.Warn("Device is not a valve",
-			zap.String("device", device.Name),
-			zap.String("sensorType", device.Spec.SensorType))
-		schedule.Status.Message = fmt.Sprintf("Device %s is not a valve (type: %s)", device.Name, device.Spec.SensorType)
-		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
-			log.Error("Failed to update status", zap.Error(statusErr))
-		}
-		return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
-	}
-
-	// Parse cron expression to calculate next run time
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	cronSchedule, err := parser.Parse(schedule.Spec.CronExpression)
+	// Parse cron schedule and determine next execution
+	cronSchedule, loc, nextRun, result, err := r.parseCronSchedule(ctx, schedule, log)
 	if err != nil {
-		log.Error("Failed to parse cron expression",
-			zap.Error(err),
-			zap.String("cronExpression", schedule.Spec.CronExpression))
-		schedule.Status.Message = fmt.Sprintf("Invalid cron expression: %s", err.Error())
-		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
-			log.Error("Failed to update status", zap.Error(statusErr))
-		}
-		return ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+		return result, err
 	}
-
-	// Determine location for time zone
-	loc, err := time.LoadLocation(schedule.Spec.TimeZone)
-	if err != nil {
-		log.Warn("Failed to load timezone, using UTC",
-			zap.Error(err),
-			zap.String("timeZone", schedule.Spec.TimeZone))
-		loc = time.UTC
-	}
-
-	now := time.Now().In(loc)
-	nextRun := cronSchedule.Next(now)
 
 	// Check if we should execute now
-	shouldExecute := false
-	if schedule.Status.LastScheduledTime == nil {
-		// First time - check if we're past the first scheduled time
-		firstRun := cronSchedule.Next(schedule.CreationTimestamp.Time.In(loc))
-		if now.After(firstRun) && now.Before(firstRun.Add(1*time.Minute)) {
-			shouldExecute = true
-		}
-	} else {
-		lastScheduled := schedule.Status.LastScheduledTime.Time.In(loc)
-		expectedNextRun := cronSchedule.Next(lastScheduled)
+	shouldExecute := r.shouldExecuteNow(schedule, cronSchedule, loc)
 
-		// Execute if we're within 1 minute of the scheduled time and haven't executed yet
-		if now.After(expectedNextRun.Add(-30*time.Second)) && now.Before(expectedNextRun.Add(30*time.Second)) {
-			// Check if we already executed for this scheduled time
-			if schedule.Status.LastExecutionTime == nil || schedule.Status.LastExecutionTime.Time.Before(lastScheduled) {
-				shouldExecute = true
-			}
-		}
+	// Handle irrigation execution
+	if err := r.handleIrrigationExecution(ctx, schedule, device, shouldExecute, log); err != nil {
+		log.Error("Error during irrigation execution", zap.Error(err))
 	}
 
-	// Execute irrigation if needed
-	if shouldExecute && !schedule.Status.Active {
-		if schedule.Spec.DryRun {
-			log.Info("DRY-RUN: Would start scheduled irrigation",
-				zap.String("device", device.Name),
-				zap.Int32("durationSeconds", schedule.Spec.DurationSeconds),
-				zap.String("ieeeAddr", device.Spec.IEEEAddr))
-		} else {
-			log.Info("Starting scheduled irrigation",
-				zap.String("device", device.Name),
-				zap.Int32("durationSeconds", schedule.Spec.DurationSeconds))
-		}
-
-		if err := r.executeIrrigation(ctx, schedule, device); err != nil {
-			log.Error("Failed to execute irrigation", zap.Error(err))
-			schedule.Status.Message = fmt.Sprintf("Failed to start irrigation: %s", err.Error())
-			schedule.Status.LastStatus = "Failed"
-		} else {
-			now := metav1.Now()
-			schedule.Status.Active = true
-			schedule.Status.LastScheduledTime = &now
-			schedule.Status.LastExecutionTime = &now
-			if schedule.Spec.DryRun {
-				schedule.Status.Message = "DRY-RUN: Irrigation simulation running"
-				schedule.Status.LastStatus = "DryRun"
-			} else {
-				schedule.Status.Message = "Irrigation running"
-				schedule.Status.LastStatus = "Running"
-			}
-		}
-	}
-
-	// Check if we need to stop irrigation
-	if schedule.Status.Active && schedule.Status.LastExecutionTime != nil {
-		elapsed := time.Since(schedule.Status.LastExecutionTime.Time)
-		targetDuration := time.Duration(schedule.Spec.DurationSeconds) * time.Second
-
-		if elapsed >= targetDuration {
-			if schedule.Spec.DryRun {
-				log.Info("DRY-RUN: Would stop irrigation",
-					zap.String("device", device.Name),
-					zap.Duration("elapsed", elapsed))
-			} else {
-				log.Info("Stopping irrigation",
-					zap.String("device", device.Name),
-					zap.Duration("elapsed", elapsed))
-			}
-
-			if err := r.stopIrrigation(ctx, schedule, device); err != nil {
-				log.Error("Failed to stop irrigation", zap.Error(err))
-				schedule.Status.Message = fmt.Sprintf("Failed to stop irrigation: %s", err.Error())
-			} else {
-				now := metav1.Now()
-				schedule.Status.Active = false
-				schedule.Status.LastCompletionTime = &now
-				if schedule.Spec.DryRun {
-					schedule.Status.Message = "DRY-RUN: Irrigation simulation completed"
-					schedule.Status.LastStatus = "DryRunCompleted"
-				} else {
-					schedule.Status.Message = "Irrigation completed successfully"
-					schedule.Status.LastStatus = "Completed"
-				}
-			}
-		}
+	// Handle irrigation stop
+	if err := r.handleIrrigationStop(ctx, schedule, device, log); err != nil {
+		log.Error("Error during irrigation stop", zap.Error(err))
 	}
 
 	// Update next scheduled time
@@ -247,13 +113,209 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Requeue based on state
-	if schedule.Status.Active {
-		// Check every 10 seconds while irrigation is running
-		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	return r.determineRequeueInterval(schedule), nil
+}
+
+// handleDisabledSchedule handles the case where a schedule is disabled
+func (r *ScheduleReconciler) handleDisabledSchedule(ctx context.Context, schedule *mqttv1alpha1.Schedule, log *zap.Logger) (ctrl.Result, error) {
+	log.Debug("Schedule is disabled, skipping")
+	schedule.Status.Message = "Schedule is disabled"
+	if err := r.Status().Update(ctx, schedule); err != nil {
+		log.Error("Failed to update status", zap.Error(err))
+	}
+	return ctrl.Result{RequeueAfter: 1 * time.Minute}, nil
+}
+
+// findAndValidateDevice finds the device and validates it's a valve
+func (r *ScheduleReconciler) findAndValidateDevice(ctx context.Context, schedule *mqttv1alpha1.Schedule, log *zap.Logger) (*mqttv1alpha1.Device, ctrl.Result, error) {
+	device, err := r.findDevice(ctx, schedule)
+	if err != nil {
+		log.Error("Failed to find device", zap.Error(err))
+		schedule.Status.Message = fmt.Sprintf("Device not found: %s", err.Error())
+		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
+			log.Error("Failed to update status", zap.Error(statusErr))
+		}
+		return nil, ctrl.Result{RequeueAfter: 1 * time.Minute}, err
 	}
 
+	log.Debug("Found device for schedule",
+		zap.String("deviceName", device.Name),
+		zap.String("ieeeAddr", device.Spec.IEEEAddr))
+
+	// Verify device is a valve
+	if device.Spec.SensorType != "valve" {
+		log.Warn("Device is not a valve",
+			zap.String("device", device.Name),
+			zap.String("sensorType", device.Spec.SensorType))
+		schedule.Status.Message = fmt.Sprintf("Device %s is not a valve (type: %s)", device.Name, device.Spec.SensorType)
+		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
+			log.Error("Failed to update status", zap.Error(statusErr))
+		}
+		return nil, ctrl.Result{RequeueAfter: 5 * time.Minute}, fmt.Errorf("device is not a valve")
+	}
+
+	return device, ctrl.Result{}, nil
+}
+
+// updateDeviceStatus updates the resolved device name and power state
+func (r *ScheduleReconciler) updateDeviceStatus(schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, log *zap.Logger) {
+	if schedule.Status.ResolvedDeviceName != device.Name {
+		schedule.Status.ResolvedDeviceName = device.Name
+	}
+
+	if device.Status.LastPowerState != nil {
+		powerState := *device.Status.LastPowerState
+		if schedule.Status.ValvePowerState == nil || *schedule.Status.ValvePowerState != powerState {
+			schedule.Status.ValvePowerState = &powerState
+			log.Debug("Updated valve power state from device status",
+				zap.Int("powerState", powerState))
+		}
+	}
+}
+
+// parseCronSchedule parses the cron expression and determines timezone
+func (r *ScheduleReconciler) parseCronSchedule(ctx context.Context, schedule *mqttv1alpha1.Schedule, log *zap.Logger) (cron.Schedule, *time.Location, time.Time, ctrl.Result, error) {
+	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+	cronSchedule, err := parser.Parse(schedule.Spec.CronExpression)
+	if err != nil {
+		log.Error("Failed to parse cron expression",
+			zap.Error(err),
+			zap.String("cronExpression", schedule.Spec.CronExpression))
+		schedule.Status.Message = fmt.Sprintf("Invalid cron expression: %s", err.Error())
+		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
+			log.Error("Failed to update status", zap.Error(statusErr))
+		}
+		return nil, nil, time.Time{}, ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+	}
+
+	loc, err := time.LoadLocation(schedule.Spec.TimeZone)
+	if err != nil {
+		log.Warn("Failed to load timezone, using UTC",
+			zap.Error(err),
+			zap.String("timeZone", schedule.Spec.TimeZone))
+		loc = time.UTC
+	}
+
+	now := time.Now().In(loc)
+	nextRun := cronSchedule.Next(now)
+
+	return cronSchedule, loc, nextRun, ctrl.Result{}, nil
+}
+
+// shouldExecuteNow determines if the schedule should execute now
+func (r *ScheduleReconciler) shouldExecuteNow(schedule *mqttv1alpha1.Schedule, cronSchedule cron.Schedule, loc *time.Location) bool {
+	now := time.Now().In(loc)
+
+	if schedule.Status.LastScheduledTime == nil {
+		// First time - check if we're past the first scheduled time
+		firstRun := cronSchedule.Next(schedule.CreationTimestamp.In(loc))
+		return now.After(firstRun) && now.Before(firstRun.Add(1*time.Minute))
+	}
+
+	lastScheduled := schedule.Status.LastScheduledTime.In(loc)
+	expectedNextRun := cronSchedule.Next(lastScheduled)
+
+	// Execute if we're within 1 minute of the scheduled time and haven't executed yet
+	if now.After(expectedNextRun.Add(-30*time.Second)) && now.Before(expectedNextRun.Add(30*time.Second)) {
+		// Check if we already executed for this scheduled time
+		if schedule.Status.LastExecutionTime == nil || schedule.Status.LastExecutionTime.Time.Before(lastScheduled) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// handleIrrigationExecution starts irrigation if needed
+func (r *ScheduleReconciler) handleIrrigationExecution(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, shouldExecute bool, log *zap.Logger) error {
+	if !shouldExecute || schedule.Status.Active {
+		return nil
+	}
+
+	if schedule.Spec.DryRun {
+		log.Info("DRY-RUN: Would start scheduled irrigation",
+			zap.String("device", device.Name),
+			zap.Int32("durationSeconds", schedule.Spec.DurationSeconds),
+			zap.String("ieeeAddr", device.Spec.IEEEAddr))
+	} else {
+		log.Info("Starting scheduled irrigation",
+			zap.String("device", device.Name),
+			zap.Int32("durationSeconds", schedule.Spec.DurationSeconds))
+	}
+
+	if err := r.executeIrrigation(ctx, schedule, device); err != nil {
+		log.Error("Failed to execute irrigation", zap.Error(err))
+		schedule.Status.Message = fmt.Sprintf("Failed to start irrigation: %s", err.Error())
+		schedule.Status.LastStatus = "Failed"
+		return err
+	}
+
+	now := metav1.Now()
+	schedule.Status.Active = true
+	schedule.Status.LastScheduledTime = &now
+	schedule.Status.LastExecutionTime = &now
+	if schedule.Spec.DryRun {
+		schedule.Status.Message = "DRY-RUN: Irrigation simulation running"
+		schedule.Status.LastStatus = "DryRun"
+	} else {
+		schedule.Status.Message = "Irrigation running"
+		schedule.Status.LastStatus = "Running"
+	}
+
+	return nil
+}
+
+// handleIrrigationStop stops irrigation if duration elapsed
+func (r *ScheduleReconciler) handleIrrigationStop(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, log *zap.Logger) error {
+	if !schedule.Status.Active || schedule.Status.LastExecutionTime == nil {
+		return nil
+	}
+
+	elapsed := time.Since(schedule.Status.LastExecutionTime.Time)
+	targetDuration := time.Duration(schedule.Spec.DurationSeconds) * time.Second
+
+	if elapsed < targetDuration {
+		return nil
+	}
+
+	if schedule.Spec.DryRun {
+		log.Info("DRY-RUN: Would stop irrigation",
+			zap.String("device", device.Name),
+			zap.Duration("elapsed", elapsed))
+	} else {
+		log.Info("Stopping irrigation",
+			zap.String("device", device.Name),
+			zap.Duration("elapsed", elapsed))
+	}
+
+	if err := r.stopIrrigation(ctx, schedule, device); err != nil {
+		log.Error("Failed to stop irrigation", zap.Error(err))
+		schedule.Status.Message = fmt.Sprintf("Failed to stop irrigation: %s", err.Error())
+		return err
+	}
+
+	now := metav1.Now()
+	schedule.Status.Active = false
+	schedule.Status.LastCompletionTime = &now
+	if schedule.Spec.DryRun {
+		schedule.Status.Message = "DRY-RUN: Irrigation simulation completed"
+		schedule.Status.LastStatus = "DryRunCompleted"
+	} else {
+		schedule.Status.Message = "Irrigation completed successfully"
+		schedule.Status.LastStatus = "Completed"
+	}
+
+	return nil
+}
+
+// determineRequeueInterval determines when to requeue based on schedule state
+func (r *ScheduleReconciler) determineRequeueInterval(schedule *mqttv1alpha1.Schedule) ctrl.Result {
+	if schedule.Status.Active {
+		// Check every 10 seconds while irrigation is running
+		return ctrl.Result{RequeueAfter: 10 * time.Second}
+	}
 	// Otherwise, check every 30 seconds to catch the next scheduled time
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	return ctrl.Result{RequeueAfter: 30 * time.Second}
 }
 
 // findDevice finds a device by one of the supported identifiers
@@ -333,13 +395,13 @@ func (r *ScheduleReconciler) findDevice(ctx context.Context, schedule *mqttv1alp
 }
 
 // executeIrrigation starts the irrigation by turning on the valve
-func (r *ScheduleReconciler) executeIrrigation(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device) error {
+func (r *ScheduleReconciler) executeIrrigation(ctx context.Context, _ *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device) error {
 	// Use the valve controller to turn on the valve
 	return r.ValveController.TurnOn(ctx, device)
 }
 
 // stopIrrigation stops the irrigation by turning off the valve
-func (r *ScheduleReconciler) stopIrrigation(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device) error {
+func (r *ScheduleReconciler) stopIrrigation(ctx context.Context, _ *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device) error {
 	// Use the valve controller to turn off the valve
 	return r.ValveController.TurnOff(ctx, device)
 }
