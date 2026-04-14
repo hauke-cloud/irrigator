@@ -274,7 +274,7 @@ func (r *ScheduleReconciler) handleIrrigationExecution(ctx context.Context, sche
 }
 
 // handleIrrigationStop stops irrigation if duration elapsed
-func (r *ScheduleReconciler) handleIrrigationStop(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, loc *time.Location, log *zap.Logger) error {
+func (r *ScheduleReconciler) handleIrrigationStop(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, _ *time.Location, log *zap.Logger) error {
 	if !schedule.Status.Active || schedule.Status.LastExecutionTime == nil {
 		return nil
 	}
