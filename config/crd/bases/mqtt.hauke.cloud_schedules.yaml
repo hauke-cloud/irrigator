@@ -17,6 +17,10 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
+    - jsonPath: .status.resolvedDeviceName
+      name: Device
+      priority: 1
+      type: string
     - jsonPath: .spec.cronExpression
       name: Cron
       type: string
@@ -26,18 +30,15 @@ spec:
     - jsonPath: .spec.enabled
       name: Enabled
       type: boolean
-    - jsonPath: .spec.dryRun
-      name: DryRun
-      type: boolean
     - jsonPath: .status.active
       name: Active
       type: boolean
     - jsonPath: .status.lastExecutionTime
       name: Last Run
-      type: date
+      type: string
     - jsonPath: .status.nextScheduledTime
       name: Next Run
-      type: date
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date

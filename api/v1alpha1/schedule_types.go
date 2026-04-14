@@ -124,13 +124,13 @@ type ScheduleStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=sched
+// +kubebuilder:printcolumn:name="Device",type=string,JSONPath=`.status.resolvedDeviceName`,priority=1
 // +kubebuilder:printcolumn:name="Cron",type=string,JSONPath=`.spec.cronExpression`
 // +kubebuilder:printcolumn:name="Duration",type=integer,JSONPath=`.spec.durationSeconds`
 // +kubebuilder:printcolumn:name="Enabled",type=boolean,JSONPath=`.spec.enabled`
-// +kubebuilder:printcolumn:name="DryRun",type=boolean,JSONPath=`.spec.dryRun`
 // +kubebuilder:printcolumn:name="Active",type=boolean,JSONPath=`.status.active`
-// +kubebuilder:printcolumn:name="Last Run",type=date,JSONPath=`.status.lastExecutionTime`
-// +kubebuilder:printcolumn:name="Next Run",type=date,JSONPath=`.status.nextScheduledTime`
+// +kubebuilder:printcolumn:name="Last Run",type=string,JSONPath=`.status.lastExecutionTime`
+// +kubebuilder:printcolumn:name="Next Run",type=string,JSONPath=`.status.nextScheduledTime`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Schedule is the Schema for the schedules API
