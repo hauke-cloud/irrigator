@@ -1,0 +1,131 @@
+# Default values for irrigator
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/hauke-cloud/irrigator
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+# Resources for the operator controller manager
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+# Operator configuration
+operator:
+  # Automatically install/upgrade CRDs at startup
+  installCRDs: true
+  # Enable leader election for controller manager
+  leaderElection: true
+  # Metrics configuration
+  metrics:
+    enabled: true
+    port: 8080
+  # Health probe configuration
+  health:
+    port: 8081
+  # Webhook configuration (if using webhooks)
+  webhook:
+    enabled: false
+    port: 9443
+
+# RBAC configuration
+rbac:
+  # Create RBAC resources
+  create: true
+  # Additional cluster role rules
+  rules: []
+
+# CRD installation
+crds:
+  # Install CRDs as part of Helm chart
+  # Note: The operator also auto-installs CRDs at startup
+  install: true
+  # Keep CRDs on chart uninstall
+  keep: true
+
+# Sample resources to create
+samples:
+  # Create sample MQTTBridge
+  mqttBridge:
+    enabled: false
+    name: sample-bridge
+    host: "mqtt.local"
+    port: 1883
+    deviceType: "tasmota"
+    # Secret name for MQTT credentials
+    credentialsSecret: "mqtt-credentials"
+  
+  # Create sample Database
+  database:
+    enabled: false
+    name: sample-db
+    host: "timescaledb.default.svc.cluster.local"
+    port: 5432
+    database: "sensors"
+    username: "sensor_writer"
+    # Secret name for DB credentials
+    credentialsSecret: "db-credentials"
+    supportedSensorTypes:
+      - "irrigation"
+      - "power"
+      - "solar"
+
+# Monitoring
+monitoring:
+  # Create ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    # Additional labels for ServiceMonitor
+    labels: {}
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: json, console
+  format: "json"

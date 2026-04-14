@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mqtt-credentials
+  namespace: default
+type: Opaque
+stringData:
+  username: "your-mqtt-username"
+  password: "your-mqtt-password"
+---
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: MQTTBridge
+metadata:
+  labels:
+    app.kubernetes.io/name: irrigator
+    app.kubernetes.io/managed-by: kustomize
+  name: zigbee2mqtt-bridge
+  namespace: default
+spec:
+  # MQTT broker host
+  host: "mqtt.example.com"
+  
+  # MQTT broker port
+  port: 1883
+  
+  # Reference to Kubernetes secret containing credentials
+  credentialsSecretRef:
+    name: mqtt-credentials
+  
+  # Topic prefix for Zigbee2MQTT
+  topicPrefix: "zigbee2mqtt"
+  
+  # Enable automatic device discovery
+  discoveryEnabled: true
+  
+  # Optional: Custom MQTT client ID
+  # clientId: "my-custom-client-id"
+  
+  # Optional: TLS configuration
+  # tls:
+  #   enabled: true
+  #   insecureSkipVerify: false
+  #   caSecretRef:
+  #     name: mqtt-ca-cert
+

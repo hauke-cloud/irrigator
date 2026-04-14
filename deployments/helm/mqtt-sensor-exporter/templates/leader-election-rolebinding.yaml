@@ -1,0 +1,17 @@
+{{- if and .Values.rbac.create .Values.operator.leaderElection -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "irrigator.fullname" . }}-leader-election-rolebinding
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "irrigator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "irrigator.fullname" . }}-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: {{ include "irrigator.serviceAccountName" . }}
+  namespace: {{ .Release.Namespace }}
+{{- end }}

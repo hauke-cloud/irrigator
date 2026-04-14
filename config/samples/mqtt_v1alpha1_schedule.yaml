@@ -1,0 +1,129 @@
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  labels:
+    app.kubernetes.io/name: irrigator
+    app.kubernetes.io/managed-by: kustomize
+  name: schedule-by-name
+spec:
+  # Address device by CR name
+  deviceName: my-irrigation-valve
+  
+  # Run every day at 6:00 AM
+  cronExpression: "0 6 * * *"
+  
+  # Run for 30 minutes (1800 seconds)
+  durationSeconds: 1800
+  
+  # Schedule is enabled
+  enabled: true
+  
+  # Use Europe/Berlin timezone
+  timeZone: "Europe/Berlin"
+  
+  # Dry-run disabled (actually control the valve)
+  dryRun: false
+---
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  labels:
+    app.kubernetes.io/name: irrigator
+    app.kubernetes.io/managed-by: kustomize
+  name: schedule-by-friendly-name
+spec:
+  # Address device by friendly name
+  deviceFriendlyName: "Garden Valve Zone 1"
+  
+  # Run twice a day: 6:00 AM and 6:00 PM
+  cronExpression: "0 6,18 * * *"
+  
+  # Run for 15 minutes (900 seconds)
+  durationSeconds: 900
+  
+  # Schedule is enabled
+  enabled: true
+  
+  # Use UTC timezone
+  timeZone: "UTC"
+  
+  # Dry-run disabled
+  dryRun: false
+---
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  labels:
+    app.kubernetes.io/name: irrigator
+    app.kubernetes.io/managed-by: kustomize
+  name: schedule-by-ieee-addr
+spec:
+  # Address device by IEEE address
+  deviceIEEEAddr: "0xF4B3B1FFFE4EA459"
+  
+  # Run every other day (Mon, Wed, Fri, Sun) at 7:00 AM
+  cronExpression: "0 7 * * 1,3,5,0"
+  
+  # Run for 45 minutes (2700 seconds)
+  durationSeconds: 2700
+  
+  # Schedule is enabled
+  enabled: true
+  
+  # Use Europe/Berlin timezone
+  timeZone: "Europe/Berlin"
+  
+  # Dry-run disabled
+  dryRun: false
+---
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  labels:
+    app.kubernetes.io/name: irrigator
+    app.kubernetes.io/managed-by: kustomize
+  name: schedule-by-short-addr
+spec:
+  # Address device by short Zigbee address
+  deviceShortAddr: "0x1234"
+  
+  # Run every 6 hours
+  cronExpression: "0 */6 * * *"
+  
+  # Run for 20 minutes (1200 seconds)
+  durationSeconds: 1200
+  
+  # Schedule is enabled
+  enabled: true
+  
+  # Use UTC timezone
+  timeZone: "UTC"
+  
+  # Dry-run disabled
+  dryRun: false
+---
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  labels:
+    app.kubernetes.io/name: irrigator
+    app.kubernetes.io/managed-by: kustomize
+  name: schedule-dry-run-test
+spec:
+  # Address device by name for dry-run testing
+  deviceName: test-valve
+  
+  # Run every 5 minutes for testing
+  cronExpression: "*/5 * * * *"
+  
+  # Run for 2 minutes (120 seconds)
+  durationSeconds: 120
+  
+  # Schedule is enabled
+  enabled: true
+  
+  # Use UTC timezone
+  timeZone: "UTC"
+  
+  # DRY-RUN MODE: Only log what would happen, don't send MQTT commands
+  dryRun: true

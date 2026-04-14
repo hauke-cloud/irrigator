@@ -1,0 +1,203 @@
+/*
+Copyright 2026 hauke.cloud.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1alpha1
+
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+
+// MQTTBridgeSpec defines the desired state of MQTTBridge
+type MQTTBridgeSpec struct {
+	// Host is the MQTT broker hostname or IP address
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Host string `json:"host"`
+
+	// Port is the MQTT broker port
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +kubebuilder:default=1883
+	Port int32 `json:"port"`
+
+	// CredentialsSecretRef is a reference to a Kubernetes Secret containing MQTT credentials
+	// The secret should contain keys: "username" and "password"
+	// +optional
+	CredentialsSecretRef *SecretReference `json:"credentialsSecretRef,omitempty"`
+
+	// TLS configuration for secure MQTT connection
+	// +optional
+	TLS *TLSConfig `json:"tls,omitempty"`
+
+	// TopicPrefix is the base topic to subscribe to for device discovery
+	// For Zigbee2MQTT, this is typically "zigbee2mqtt"
+	// For Tasmota with multiple topics, use Topics field instead
+	// +optional
+	TopicPrefix string `json:"topicPrefix,omitempty"`
+
+	// Topics is a list of topic subscriptions with their types
+	// Use this for advanced configurations like Tasmota with multiple topic types
+	// If specified, TopicPrefix is ignored
+	// +optional
+	Topics []TopicSubscription `json:"topics,omitempty"`
+
+	// DeviceType specifies the MQTT device ecosystem
+	// Supported types: "zigbee2mqtt", "tasmota", "generic"
+	// Different device types use different topic structures and discovery methods
+	// +kubebuilder:validation:Enum=zigbee2mqtt;tasmota;generic
+	// +kubebuilder:default="tasmota"
+	// +optional
+	DeviceType string `json:"deviceType,omitempty"`
+
+	// BridgeName is the device name for Tasmota bridges
+	// For Tasmota: tele/<bridgeName>/SENSOR
+	// If not specified, subscribes to wildcard: tele/+/SENSOR
+	// +optional
+	BridgeName string `json:"bridgeName,omitempty"`
+
+	// DiscoveryEnabled enables automatic device discovery
+	// +kubebuilder:default=true
+	// +optional
+	DiscoveryEnabled *bool `json:"discoveryEnabled,omitempty"`
+
+	// ClientID is the MQTT client identifier
+	// If not specified, a unique client ID will be generated
+	// +optional
+	ClientID string `json:"clientId,omitempty"`
+}
+
+// SecretReference contains information to locate a Kubernetes Secret
+type SecretReference struct {
+	// Name of the secret
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Namespace of the secret. If not specified, uses the same namespace as the MQTTBridge
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// TopicSubscription defines an MQTT topic to subscribe to with its type
+type TopicSubscription struct {
+	// Topic is the MQTT topic pattern to subscribe to
+	// Supports MQTT wildcards: + (single level), # (multi-level)
+	// Examples: "tele/+/SENSOR", "stat/tasmota_123/RESULT", "zigbee2mqtt/#"
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Topic string `json:"topic"`
+
+	// Type indicates how to process messages from this topic
+	// For Tasmota: "telemetry", "status", "state", "result"
+	// For Zigbee2MQTT: "device", "bridge"
+	// For Generic: "sensor", "command", "status", or custom
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	Type string `json:"type"`
+
+	// QoS is the MQTT Quality of Service level for this subscription
+	// 0 = At most once, 1 = At least once, 2 = Exactly once
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=2
+	// +kubebuilder:default=0
+	// +optional
+	QoS *int32 `json:"qos,omitempty"`
+}
+
+// TLSConfig defines TLS/SSL configuration for MQTT connection
+type TLSConfig struct {
+	// Enabled indicates whether TLS should be used
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+
+	// InsecureSkipVerify skips server certificate verification (not recommended for production)
+	// +kubebuilder:default=false
+	// +optional
+	InsecureSkipVerify bool `json:"insecureSkipVerify,omitempty"`
+
+	// CASecretRef references a secret containing the CA certificate
+	// The secret should contain key: "ca.crt"
+	// +optional
+	CASecretRef *SecretReference `json:"caSecretRef,omitempty"`
+}
+
+// MQTTBridgeStatus defines the observed state of MQTTBridge.
+type MQTTBridgeStatus struct {
+	// ConnectionState indicates whether the bridge is connected to the MQTT broker
+	// +kubebuilder:validation:Enum=Connected;Disconnected;Error;Unknown
+	// +optional
+	ConnectionState string `json:"connectionState,omitempty"`
+
+	// LastConnectedTime is the timestamp when the bridge last successfully connected
+	// +optional
+	LastConnectedTime *metav1.Time `json:"lastConnectedTime,omitempty"`
+
+	// DiscoveredDevices is the number of devices discovered on this bridge
+	// +optional
+	DiscoveredDevices int32 `json:"discoveredDevices,omitempty"`
+
+	// Message provides additional information about the current state
+	// +optional
+	Message string `json:"message,omitempty"`
+
+	// Conditions represent the current state of the MQTTBridge resource.
+	// +listType=map
+	// +listMapKey=type
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:shortName=bridge;bridges
+// +kubebuilder:printcolumn:name="Host",type=string,JSONPath=`.spec.host`
+// +kubebuilder:printcolumn:name="Port",type=integer,JSONPath=`.spec.port`
+// +kubebuilder:printcolumn:name="State",type=string,JSONPath=`.status.connectionState`
+// +kubebuilder:printcolumn:name="Devices",type=integer,JSONPath=`.status.discoveredDevices`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
+
+// MQTTBridge is the Schema for the mqttbridges API
+type MQTTBridge struct {
+	metav1.TypeMeta `json:",inline"`
+
+	// metadata is a standard object metadata
+	// +optional
+	metav1.ObjectMeta `json:"metadata,omitzero"`
+
+	// spec defines the desired state of MQTTBridge
+	// +required
+	Spec MQTTBridgeSpec `json:"spec"`
+
+	// status defines the observed state of MQTTBridge
+	// +optional
+	Status MQTTBridgeStatus `json:"status,omitzero"`
+}
+
+// +kubebuilder:object:root=true
+
+// MQTTBridgeList contains a list of MQTTBridge
+type MQTTBridgeList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitzero"`
+	Items           []MQTTBridge `json:"items"`
+}
+
+func init() {
+	SchemeBuilder.Register(&MQTTBridge{}, &MQTTBridgeList{})
+}

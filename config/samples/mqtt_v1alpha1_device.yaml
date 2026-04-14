@@ -1,0 +1,40 @@
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Device
+metadata:
+  labels:
+    app.kubernetes.io/name: irrigator
+    app.kubernetes.io/managed-by: kustomize
+  name: temperature-sensor-living-room
+  namespace: default
+spec:
+  # Reference to the MQTT bridge (set by operator, but can be viewed)
+  bridgeRef:
+    name: zigbee2mqtt-bridge
+  
+  # IEEE address (set by operator during discovery)
+  ieeeAddr: "0x00124b001234abcd"
+  
+  # Sensor type - determines which database to use for measurements
+  # Supported: valve, moisture, power, solar, temperature, humidity, pressure
+  sensorType: "temperature"
+  
+  # Optional: custom table name for measurements
+  # If not specified, defaults to "<sensorType>_measurements"
+
+  
+  # User-configurable friendly name
+  friendlyName: "Living Room Temperature Sensor"
+  
+  # Location metadata
+  location: "Living Room"
+  room: "living-room"
+  
+  # Disable processing if needed
+  disabled: false
+  
+  # Custom labels for organization
+  metadataLabels:
+    zone: "ground-floor"
+    type: "climate"
+    critical: "false"
+

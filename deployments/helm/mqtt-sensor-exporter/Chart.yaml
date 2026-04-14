@@ -1,0 +1,22 @@
+apiVersion: v2
+name: irrigator
+description: A Helm chart for MQTT Sensor Exporter - Kubernetes operator for IoT sensor data
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - mqtt
+  - iot
+  - sensors
+  - zigbee
+  - tasmota
+  - zigbee2mqtt
+  - timescaledb
+  - kubernetes
+  - operator
+home: https://github.com/hauke-cloud/irrigator
+sources:
+  - https://github.com/hauke-cloud/irrigator
+maintainers:
+  - name: hauke-cloud
+    email: contact@hauke.cloud
