@@ -33,10 +33,10 @@ spec:
     - jsonPath: .status.active
       name: Active
       type: boolean
-    - jsonPath: .status.lastExecutionTime
+    - jsonPath: .status.lastExecutionTimeFormatted
       name: Last Run
       type: string
-    - jsonPath: .status.nextScheduledTime
+    - jsonPath: .status.nextScheduledTimeFormatted
       name: Next Run
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -196,6 +196,11 @@ spec:
                 description: LastExecutionTime is when the irrigation actually started
                 format: date-time
                 type: string
+              lastExecutionTimeFormatted:
+                description: |-
+                  LastExecutionTimeFormatted is the last execution time formatted in the configured timezone
+                  This is a human-readable string for display purposes
+                type: string
               lastScheduledTime:
                 description: LastScheduledTime is when the irrigation was last scheduled
                   to run
@@ -212,6 +217,11 @@ spec:
                 description: NextScheduledTime is when the irrigation is next scheduled
                   to run
                 format: date-time
+                type: string
+              nextScheduledTimeFormatted:
+                description: |-
+                  NextScheduledTimeFormatted is the next scheduled time formatted in the configured timezone
+                  This is a human-readable string for display purposes
                 type: string
               resolvedDeviceName:
                 description: |-

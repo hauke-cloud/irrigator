@@ -72,6 +72,8 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		// Update next scheduled time
 		nextRunTime := metav1.NewTime(nextRun)
 		schedule.Status.NextScheduledTime = &nextRunTime
+		// Format the time in the configured timezone
+		schedule.Status.NextScheduledTimeFormatted = nextRun.In(loc).Format("2006-01-02 15:04:05 MST")
 	}
 
 	// Check if schedule is enabled
@@ -104,12 +106,12 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	shouldExecute := r.shouldExecuteNow(schedule, cronSchedule, loc)
 
 	// Handle irrigation execution
-	if err := r.handleIrrigationExecution(ctx, schedule, device, shouldExecute, log); err != nil {
+	if err := r.handleIrrigationExecution(ctx, schedule, device, shouldExecute, loc, log); err != nil {
 		log.Error("Error during irrigation execution", zap.Error(err))
 	}
 
 	// Handle irrigation stop
-	if err := r.handleIrrigationStop(ctx, schedule, device, log); err != nil {
+	if err := r.handleIrrigationStop(ctx, schedule, device, loc, log); err != nil {
 		log.Error("Error during irrigation stop", zap.Error(err))
 	}
 
@@ -231,7 +233,7 @@ func (r *ScheduleReconciler) shouldExecuteNow(schedule *mqttv1alpha1.Schedule, c
 }
 
 // handleIrrigationExecution starts irrigation if needed
-func (r *ScheduleReconciler) handleIrrigationExecution(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, shouldExecute bool, log *zap.Logger) error {
+func (r *ScheduleReconciler) handleIrrigationExecution(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, shouldExecute bool, loc *time.Location, log *zap.Logger) error {
 	if !shouldExecute || schedule.Status.Active {
 		return nil
 	}
@@ -258,6 +260,8 @@ func (r *ScheduleReconciler) handleIrrigationExecution(ctx context.Context, sche
 	schedule.Status.Active = true
 	schedule.Status.LastScheduledTime = &now
 	schedule.Status.LastExecutionTime = &now
+	// Format the execution time in the configured timezone
+	schedule.Status.LastExecutionTimeFormatted = now.Time.In(loc).Format("2006-01-02 15:04:05 MST")
 	if schedule.Spec.DryRun {
 		schedule.Status.Message = "DRY-RUN: Irrigation simulation running"
 		schedule.Status.LastStatus = "DryRun"
@@ -270,7 +274,7 @@ func (r *ScheduleReconciler) handleIrrigationExecution(ctx context.Context, sche
 }
 
 // handleIrrigationStop stops irrigation if duration elapsed
-func (r *ScheduleReconciler) handleIrrigationStop(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, log *zap.Logger) error {
+func (r *ScheduleReconciler) handleIrrigationStop(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, loc *time.Location, log *zap.Logger) error {
 	if !schedule.Status.Active || schedule.Status.LastExecutionTime == nil {
 		return nil
 	}

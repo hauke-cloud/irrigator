@@ -104,6 +104,16 @@ type ScheduleStatus struct {
 	// +optional
 	NextScheduledTime *metav1.Time `json:"nextScheduledTime,omitempty"`
 
+	// NextScheduledTimeFormatted is the next scheduled time formatted in the configured timezone
+	// This is a human-readable string for display purposes
+	// +optional
+	NextScheduledTimeFormatted string `json:"nextScheduledTimeFormatted,omitempty"`
+
+	// LastExecutionTimeFormatted is the last execution time formatted in the configured timezone
+	// This is a human-readable string for display purposes
+	// +optional
+	LastExecutionTimeFormatted string `json:"lastExecutionTimeFormatted,omitempty"`
+
 	// Active indicates if irrigation is currently running
 	// +optional
 	Active bool `json:"active,omitempty"`
@@ -129,8 +139,8 @@ type ScheduleStatus struct {
 // +kubebuilder:printcolumn:name="Duration",type=integer,JSONPath=`.spec.durationSeconds`
 // +kubebuilder:printcolumn:name="Enabled",type=boolean,JSONPath=`.spec.enabled`
 // +kubebuilder:printcolumn:name="Active",type=boolean,JSONPath=`.status.active`
-// +kubebuilder:printcolumn:name="Last Run",type=string,JSONPath=`.status.lastExecutionTime`
-// +kubebuilder:printcolumn:name="Next Run",type=string,JSONPath=`.status.nextScheduledTime`
+// +kubebuilder:printcolumn:name="Last Run",type=string,JSONPath=`.status.lastExecutionTimeFormatted`
+// +kubebuilder:printcolumn:name="Next Run",type=string,JSONPath=`.status.nextScheduledTimeFormatted`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Schedule is the Schema for the schedules API
