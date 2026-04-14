@@ -17,9 +17,23 @@ rules:
 - apiGroups:
   - mqtt.hauke.cloud
   resources:
-  - databases
   - devices
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - mqtt.hauke.cloud
+  resources:
   - mqttbridges
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - mqtt.hauke.cloud
+  resources:
+  - schedules
   verbs:
   - create
   - delete
@@ -31,17 +45,13 @@ rules:
 - apiGroups:
   - mqtt.hauke.cloud
   resources:
-  - databases/finalizers
-  - devices/finalizers
-  - mqttbridges/finalizers
+  - schedules/finalizers
   verbs:
   - update
 - apiGroups:
   - mqtt.hauke.cloud
   resources:
-  - databases/status
-  - devices/status
-  - mqttbridges/status
+  - schedules/status
   verbs:
   - get
   - patch
