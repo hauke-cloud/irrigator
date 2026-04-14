@@ -66,9 +66,26 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 
+	// Parse cron schedule early to set next run time even if schedule is disabled or has errors
+	cronSchedule, loc, nextRun, cronErr := r.parseCronScheduleEarly(schedule, log)
+	if cronErr == nil {
+		// Update next scheduled time
+		nextRunTime := metav1.NewTime(nextRun)
+		schedule.Status.NextScheduledTime = &nextRunTime
+	}
+
 	// Check if schedule is enabled
 	if schedule.Spec.Enabled != nil && !*schedule.Spec.Enabled {
 		return r.handleDisabledSchedule(ctx, schedule, log)
+	}
+
+	// If cron parsing failed, return error
+	if cronErr != nil {
+		schedule.Status.Message = fmt.Sprintf("Invalid cron expression: %s", cronErr.Error())
+		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
+			log.Error("Failed to update status", zap.Error(statusErr))
+		}
+		return ctrl.Result{RequeueAfter: 5 * time.Minute}, cronErr
 	}
 
 	// Update valve controller dry-run mode based on schedule spec
@@ -83,12 +100,6 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// Update resolved device name and power state
 	r.updateDeviceStatus(schedule, device, log)
 
-	// Parse cron schedule and determine next execution
-	cronSchedule, loc, nextRun, result, err := r.parseCronSchedule(ctx, schedule, log)
-	if err != nil {
-		return result, err
-	}
-
 	// Check if we should execute now
 	shouldExecute := r.shouldExecuteNow(schedule, cronSchedule, loc)
 
@@ -101,10 +112,6 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	if err := r.handleIrrigationStop(ctx, schedule, device, log); err != nil {
 		log.Error("Error during irrigation stop", zap.Error(err))
 	}
-
-	// Update next scheduled time
-	nextRunTime := metav1.NewTime(nextRun)
-	schedule.Status.NextScheduledTime = &nextRunTime
 
 	// Update status
 	if err := r.Status().Update(ctx, schedule); err != nil {
@@ -173,19 +180,16 @@ func (r *ScheduleReconciler) updateDeviceStatus(schedule *mqttv1alpha1.Schedule,
 	}
 }
 
-// parseCronSchedule parses the cron expression and determines timezone
-func (r *ScheduleReconciler) parseCronSchedule(ctx context.Context, schedule *mqttv1alpha1.Schedule, log *zap.Logger) (cron.Schedule, *time.Location, time.Time, ctrl.Result, error) {
+// parseCronScheduleEarly parses the cron expression early to calculate next run time
+// This is called before validation so we can show next run time even for disabled/invalid schedules
+func (r *ScheduleReconciler) parseCronScheduleEarly(schedule *mqttv1alpha1.Schedule, log *zap.Logger) (cron.Schedule, *time.Location, time.Time, error) {
 	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	cronSchedule, err := parser.Parse(schedule.Spec.CronExpression)
 	if err != nil {
 		log.Error("Failed to parse cron expression",
 			zap.Error(err),
 			zap.String("cronExpression", schedule.Spec.CronExpression))
-		schedule.Status.Message = fmt.Sprintf("Invalid cron expression: %s", err.Error())
-		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
-			log.Error("Failed to update status", zap.Error(statusErr))
-		}
-		return nil, nil, time.Time{}, ctrl.Result{RequeueAfter: 5 * time.Minute}, err
+		return nil, nil, time.Time{}, err
 	}
 
 	loc, err := time.LoadLocation(schedule.Spec.TimeZone)
@@ -199,7 +203,7 @@ func (r *ScheduleReconciler) parseCronSchedule(ctx context.Context, schedule *mq
 	now := time.Now().In(loc)
 	nextRun := cronSchedule.Next(now)
 
-	return cronSchedule, loc, nextRun, ctrl.Result{}, nil
+	return cronSchedule, loc, nextRun, nil
 }
 
 // shouldExecuteNow determines if the schedule should execute now
