@@ -74,6 +74,11 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		schedule.Status.NextScheduledTime = &nextRunTime
 		// Format the time in the configured timezone
 		schedule.Status.NextScheduledTimeFormatted = nextRun.In(loc).Format("2006-01-02 15:04:05 MST")
+
+		// Update last execution time formatted if we have a last execution time
+		if schedule.Status.LastExecutionTime != nil {
+			schedule.Status.LastExecutionTimeFormatted = schedule.Status.LastExecutionTime.Time.In(loc).Format("2006-01-02 15:04:05 MST")
+		}
 	}
 
 	// Check if schedule is enabled
