@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/robfig/cron/v3"
+	"github.com/go-co-op/gocron/v2"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,7 +67,7 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	}
 
 	// Parse cron schedule early to set next run time even if schedule is disabled or has errors
-	cronSchedule, loc, nextRun, cronErr := r.parseCronScheduleEarly(schedule, log)
+	loc, nextRun, cronErr := r.parseCronScheduleEarly(schedule, log)
 	if cronErr == nil {
 		// Update next scheduled time
 		nextRunTime := metav1.NewTime(nextRun)
@@ -108,7 +108,15 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	r.updateDeviceStatus(schedule, device, log)
 
 	// Check if we should execute now
-	shouldExecute := r.shouldExecuteNow(schedule, cronSchedule, loc)
+	shouldExecute, err := r.shouldExecuteNow(schedule, loc, log)
+	if err != nil {
+		log.Error("Failed to determine if should execute", zap.Error(err))
+		schedule.Status.Message = fmt.Sprintf("Scheduling error: %s", err.Error())
+		if statusErr := r.Status().Update(ctx, schedule); statusErr != nil {
+			log.Error("Failed to update status", zap.Error(statusErr))
+		}
+		return ctrl.Result{RequeueAfter: 1 * time.Minute}, err
+	}
 
 	// Handle irrigation execution
 	if err := r.handleIrrigationExecution(ctx, schedule, device, shouldExecute, loc, log); err != nil {
@@ -189,16 +197,8 @@ func (r *ScheduleReconciler) updateDeviceStatus(schedule *mqttv1alpha1.Schedule,
 
 // parseCronScheduleEarly parses the cron expression early to calculate next run time
 // This is called before validation so we can show next run time even for disabled/invalid schedules
-func (r *ScheduleReconciler) parseCronScheduleEarly(schedule *mqttv1alpha1.Schedule, log *zap.Logger) (cron.Schedule, *time.Location, time.Time, error) {
-	parser := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-	cronSchedule, err := parser.Parse(schedule.Spec.CronExpression)
-	if err != nil {
-		log.Error("Failed to parse cron expression",
-			zap.Error(err),
-			zap.String("cronExpression", schedule.Spec.CronExpression))
-		return nil, nil, time.Time{}, err
-	}
-
+func (r *ScheduleReconciler) parseCronScheduleEarly(schedule *mqttv1alpha1.Schedule, log *zap.Logger) (*time.Location, time.Time, error) {
+	// Load timezone
 	loc, err := time.LoadLocation(schedule.Spec.TimeZone)
 	if err != nil {
 		log.Warn("Failed to load timezone, using UTC",
@@ -207,34 +207,101 @@ func (r *ScheduleReconciler) parseCronScheduleEarly(schedule *mqttv1alpha1.Sched
 		loc = time.UTC
 	}
 
-	now := time.Now().In(loc)
-	nextRun := cronSchedule.Next(now)
+	// Create a temporary scheduler to parse the cron expression
+	s, err := gocron.NewScheduler(gocron.WithLocation(loc))
+	if err != nil {
+		return loc, time.Time{}, fmt.Errorf("failed to create scheduler: %w", err)
+	}
+	defer func() { _ = s.Shutdown() }()
 
-	return cronSchedule, loc, nextRun, nil
-}
-
-// shouldExecuteNow determines if the schedule should execute now
-func (r *ScheduleReconciler) shouldExecuteNow(schedule *mqttv1alpha1.Schedule, cronSchedule cron.Schedule, loc *time.Location) bool {
-	now := time.Now().In(loc)
-
-	if schedule.Status.LastScheduledTime == nil {
-		// First time - check if we're past the first scheduled time
-		firstRun := cronSchedule.Next(schedule.CreationTimestamp.In(loc))
-		return now.After(firstRun) && now.Before(firstRun.Add(1*time.Minute))
+	// Create a job with the cron expression to validate it and get next run
+	job, err := s.NewJob(
+		gocron.CronJob(schedule.Spec.CronExpression, false),
+		gocron.NewTask(func() {}), // dummy task
+	)
+	if err != nil {
+		log.Error("Failed to parse cron expression",
+			zap.Error(err),
+			zap.String("cronExpression", schedule.Spec.CronExpression))
+		return loc, time.Time{}, fmt.Errorf("invalid cron expression: %w", err)
 	}
 
-	lastScheduled := schedule.Status.LastScheduledTime.In(loc)
-	expectedNextRun := cronSchedule.Next(lastScheduled)
+	// Get the next run time
+	nextRun, err := job.NextRun()
+	if err != nil {
+		return loc, time.Time{}, fmt.Errorf("failed to get next run: %w", err)
+	}
 
-	// Execute if we're within 1 minute of the scheduled time and haven't executed yet
-	if now.After(expectedNextRun.Add(-30*time.Second)) && now.Before(expectedNextRun.Add(30*time.Second)) {
-		// Check if we already executed for this scheduled time
-		if schedule.Status.LastExecutionTime == nil || schedule.Status.LastExecutionTime.Time.Before(lastScheduled) {
-			return true
+	return loc, nextRun, nil
+}
+
+// shouldExecuteNow determines if the schedule should execute now using gocron
+func (r *ScheduleReconciler) shouldExecuteNow(schedule *mqttv1alpha1.Schedule, loc *time.Location, log *zap.Logger) (bool, error) {
+	// Create a scheduler in the configured timezone
+	s, err := gocron.NewScheduler(gocron.WithLocation(loc))
+	if err != nil {
+		return false, fmt.Errorf("failed to create scheduler: %w", err)
+	}
+	defer func() { _ = s.Shutdown() }()
+
+	// Determine the start time for the schedule
+	// Use creation time or last execution time, whichever is more recent
+	startTime := schedule.CreationTimestamp.Time
+	if schedule.Status.LastExecutionTime != nil && schedule.Status.LastExecutionTime.After(startTime) {
+		startTime = schedule.Status.LastExecutionTime.Time
+	}
+
+	// Create a job with the cron expression, starting from the determined start time
+	job, err := s.NewJob(
+		gocron.CronJob(schedule.Spec.CronExpression, false),
+		gocron.NewTask(func() {}), // dummy task
+		gocron.WithStartAt(gocron.WithStartDateTime(startTime)),
+	)
+	if err != nil {
+		return false, fmt.Errorf("invalid cron expression: %w", err)
+	}
+
+	now := time.Now().In(loc)
+
+	// Get when this job should next run
+	nextRun, err := job.NextRun()
+	if err != nil {
+		return false, fmt.Errorf("failed to get next run: %w", err)
+	}
+
+	// If the next run is in the future, we shouldn't execute yet
+	if nextRun.After(now) {
+		return false, nil
+	}
+
+	// The next run is in the past or now, which means we should have executed
+	// Check if it's within our grace period (2 minutes)
+	timeSinceScheduled := now.Sub(nextRun)
+	if timeSinceScheduled > 2*time.Minute {
+		log.Debug("Missed scheduled run outside grace period",
+			zap.Time("scheduledRun", nextRun),
+			zap.Duration("timeSinceScheduled", timeSinceScheduled))
+		return false, nil
+	}
+
+	// Check if we've already executed for this scheduled time
+	if schedule.Status.LastExecutionTime != nil {
+		lastExecution := schedule.Status.LastExecutionTime.In(loc)
+
+		// If we executed at or after this scheduled time, don't execute again
+		if !lastExecution.Before(nextRun) {
+			log.Debug("Already executed for this scheduled time",
+				zap.Time("lastExecution", lastExecution),
+				zap.Time("scheduledRun", nextRun))
+			return false, nil
 		}
 	}
 
-	return false
+	log.Info("Should execute now",
+		zap.Time("scheduledRun", nextRun),
+		zap.Duration("timeSinceScheduled", timeSinceScheduled))
+
+	return true, nil
 }
 
 // handleIrrigationExecution starts irrigation if needed
