@@ -19,6 +19,8 @@ package controller
 import (
 	"context"
 
+	"github.com/go-co-op/gocron/v2"
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
@@ -119,7 +121,20 @@ var _ = Describe("Schedule Controller", func() {
 				ValveController: valveController,
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			// Initialize the scheduler manually for testing
+			s, err := gocron.NewScheduler()
+			Expect(err).NotTo(HaveOccurred())
+			controllerReconciler.scheduler = s
+			controllerReconciler.jobs = make(map[string]uuid.UUID)
+			controllerReconciler.generations = make(map[string]int64)
+			controllerReconciler.scheduler.Start()
+
+			// Clean up scheduler after test
+			defer func() {
+				_ = controllerReconciler.Shutdown()
+			}()
+
+			_, err = controllerReconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			// In test environment without MQTT broker, we expect some errors

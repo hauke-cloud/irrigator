@@ -62,7 +62,7 @@ func (d *Dispatcher) RegisterHandler(messageType string, handler MessageHandler)
 func (d *Dispatcher) Dispatch(ctx context.Context, messageType, topic, bridgeName, bridgeNamespace string, payload []byte) error {
 	handler, ok := d.handlers[messageType]
 	if !ok {
-		d.log.Warn("No handler registered for message type",
+		d.log.Debug("No handler registered for message type",
 			zap.String("type", messageType),
 			zap.String("topic", topic))
 		return nil // Not an error, just no handler
