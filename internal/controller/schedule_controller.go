@@ -46,6 +46,8 @@ type ScheduleReconciler struct {
 	scheduler gocron.Scheduler
 	// Map of schedule UID to job UUID
 	jobs map[string]uuid.UUID
+	// Map of schedule UID to cron expression + timezone (to detect changes)
+	jobSpecs map[string]string
 	// Map of schedule UID to last observed generation
 	generations map[string]int64
 	// Mutex to protect maps
@@ -199,19 +201,33 @@ func (r *ScheduleReconciler) ensureJob(ctx context.Context, schedule *mqttv1alph
 	defer r.mu.Unlock()
 
 	scheduleUID := string(schedule.UID)
+	currentSpec := fmt.Sprintf("%s|%s", schedule.Spec.CronExpression, schedule.Spec.TimeZone)
 
-	// Check if job already exists - if so, we don't need to recreate it
+	// Check if job already exists and if spec has changed
 	if jobID, exists := r.jobs[scheduleUID]; exists {
-		// Verify the job still exists in the scheduler
-		for _, j := range r.scheduler.Jobs() {
-			if j.ID() == jobID {
-				log.Debug("Cron job already exists, skipping creation", zap.String("jobID", jobID.String()))
-				return nil
+		// Check if cron expression or timezone changed
+		if lastSpec, specExists := r.jobSpecs[scheduleUID]; specExists && lastSpec == currentSpec {
+			// Verify the job still exists in the scheduler
+			for _, j := range r.scheduler.Jobs() {
+				if j.ID() == jobID {
+					log.Debug("Cron job already exists with same spec, skipping creation", zap.String("jobID", jobID.String()))
+					return nil
+				}
 			}
+			// Job was removed from scheduler, clean up our map
+			log.Debug("Job ID in map but not in scheduler, will recreate")
+		} else {
+			log.Info("Cron expression or timezone changed, recreating job",
+				zap.String("oldSpec", lastSpec),
+				zap.String("newSpec", currentSpec))
 		}
-		// Job was removed from scheduler, clean up our map
-		log.Debug("Job ID in map but not in scheduler, will recreate")
+
+		// Remove the old job
+		if err := r.scheduler.RemoveJob(jobID); err != nil {
+			log.Warn("Failed to remove old job", zap.Error(err))
+		}
 		delete(r.jobs, scheduleUID)
+		delete(r.jobSpecs, scheduleUID)
 	}
 
 	// Create the irrigation task
@@ -219,9 +235,12 @@ func (r *ScheduleReconciler) ensureJob(ctx context.Context, schedule *mqttv1alph
 		r.executeScheduledIrrigation(ctx, schedule, device, loc, log)
 	}
 
-	// Create a new cron job
+	// Create cron expression with timezone prefix
+	cronExprWithTZ := fmt.Sprintf("TZ=%s %s", schedule.Spec.TimeZone, schedule.Spec.CronExpression)
+
+	// Create a new cron job with the schedule's timezone
 	job, err := r.scheduler.NewJob(
-		gocron.CronJob(schedule.Spec.CronExpression, false),
+		gocron.CronJob(cronExprWithTZ, false),
 		gocron.NewTask(task),
 		gocron.WithName(fmt.Sprintf("%s/%s", schedule.Namespace, schedule.Name)),
 	)
@@ -229,11 +248,13 @@ func (r *ScheduleReconciler) ensureJob(ctx context.Context, schedule *mqttv1alph
 		return fmt.Errorf("failed to create cron job: %w", err)
 	}
 
-	// Store the job UUID
+	// Store the job UUID and spec
 	r.jobs[scheduleUID] = job.ID()
+	r.jobSpecs[scheduleUID] = currentSpec
 
 	log.Info("Created cron job for schedule",
 		zap.String("cronExpression", schedule.Spec.CronExpression),
+		zap.String("timezone", schedule.Spec.TimeZone),
 		zap.String("jobID", job.ID().String()))
 
 	return nil
@@ -250,7 +271,8 @@ func (r *ScheduleReconciler) removeJob(scheduleUID string) {
 		}
 		delete(r.jobs, scheduleUID)
 	}
-	// Also remove generation tracking
+	// Also remove spec tracking and generation tracking
+	delete(r.jobSpecs, scheduleUID)
 	delete(r.generations, scheduleUID)
 }
 
@@ -484,6 +506,7 @@ func (r *ScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	r.scheduler = s
 	r.jobs = make(map[string]uuid.UUID)
+	r.jobSpecs = make(map[string]string)
 	r.generations = make(map[string]int64)
 
 	// Start the scheduler

@@ -126,6 +126,7 @@ var _ = Describe("Schedule Controller", func() {
 			Expect(err).NotTo(HaveOccurred())
 			controllerReconciler.scheduler = s
 			controllerReconciler.jobs = make(map[string]uuid.UUID)
+			controllerReconciler.jobSpecs = make(map[string]string)
 			controllerReconciler.generations = make(map[string]int64)
 			controllerReconciler.scheduler.Start()
 
