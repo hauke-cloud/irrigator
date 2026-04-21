@@ -38,9 +38,10 @@ import (
 // ScheduleReconciler reconciles a Schedule object
 type ScheduleReconciler struct {
 	client.Client
-	Scheme          *runtime.Scheme
-	Log             *zap.Logger
-	ValveController *tasmota.ValveController
+	Scheme             *runtime.Scheme
+	Log                *zap.Logger
+	ValveController    *tasmota.ValveController
+	ConditionEvaluator *ConditionEvaluator
 
 	// Global scheduler instance
 	scheduler gocron.Scheduler
@@ -334,8 +335,39 @@ func (r *ScheduleReconciler) executeScheduledIrrigation(ctx context.Context, sch
 		return
 	}
 
-	// Start irrigation
+	// Evaluate execution conditions
 	now := metav1.Now()
+	schedule.Status.ConditionsLastChecked = &now
+
+	if len(schedule.Spec.ExecutionConditions) > 0 {
+		passed, message, err := r.ConditionEvaluator.EvaluateConditions(ctx, schedule)
+		schedule.Status.ConditionsPassed = &passed
+		schedule.Status.ConditionsMessage = message
+
+		if err != nil {
+			log.Error("Failed to evaluate conditions", zap.Error(err))
+			schedule.Status.Message = fmt.Sprintf("Condition evaluation error: %s", err.Error())
+			schedule.Status.LastStatus = "ConditionError"
+			_ = r.updateStatus(ctx, schedule, log)
+			return
+		}
+
+		if !passed {
+			log.Info("Execution conditions not met, skipping irrigation",
+				zap.String("schedule", schedule.Name),
+				zap.String("message", message))
+			schedule.Status.Message = fmt.Sprintf("Skipped: %s", message)
+			schedule.Status.LastStatus = "ConditionsNotMet"
+			schedule.Status.LastScheduledTime = &now
+			_ = r.updateStatus(ctx, schedule, log)
+			return
+		}
+
+		log.Info("Execution conditions met, proceeding with irrigation",
+			zap.String("schedule", schedule.Name))
+	}
+
+	// Start irrigation
 	schedule.Status.Active = true
 	schedule.Status.LastScheduledTime = &now
 	schedule.Status.LastExecutionTime = &now

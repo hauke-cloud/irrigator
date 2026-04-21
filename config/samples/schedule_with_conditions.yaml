@@ -1,0 +1,78 @@
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  name: morning-watering-with-conditions
+  namespace: default
+spec:
+  # Device to control
+  deviceName: garden-valve-1
+  
+  # Schedule: Every day at 6:00 AM
+  cronExpression: "0 6 * * *"
+  timeZone: "Europe/Berlin"
+  
+  # Duration: 30 minutes
+  durationSeconds: 1800
+  
+  # Enable the schedule
+  enabled: true
+  
+  # Execution conditions - all must pass for irrigation to start
+  executionConditions:
+    # Condition 1: Make sure no water_level sensors are alerting
+    - sensorType: water_level
+      alert: false
+      message: "Water level sensors are alerting - skipping irrigation"
+    
+    # Condition 2: Check soil moisture is below threshold
+    - sensorType: moisture
+      measurement: moisture
+      operator: lt
+      value: "60"
+      message: "Soil moisture is above 60% - irrigation not needed"
+    
+    # Condition 3: Check temperature is appropriate for watering
+    - sensorType: temperature
+      measurement: temperature
+      operator: ge
+      value: "10"
+      message: "Temperature too low for irrigation (below 10°C)"
+
+---
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  name: evening-watering-simple
+  namespace: default
+spec:
+  deviceName: garden-valve-2
+  cronExpression: "0 18 * * *"
+  timeZone: "Europe/Berlin"
+  durationSeconds: 1200
+  enabled: true
+  
+  # Simple condition: only check water levels
+  executionConditions:
+    - sensorType: water_level
+      alert: false
+
+---
+apiVersion: mqtt.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  name: battery-check-example
+  namespace: default
+spec:
+  deviceName: garden-valve-3
+  cronExpression: "0 12 * * *"
+  timeZone: "Europe/Berlin"
+  durationSeconds: 600
+  enabled: true
+  
+  # Check battery levels before irrigation
+  executionConditions:
+    - sensorType: valve
+      measurement: battery
+      operator: gt
+      value: "20"
+      message: "Valve battery too low for safe operation"

@@ -114,6 +114,60 @@ spec:
                 default: true
                 description: Enabled indicates whether this schedule is active
                 type: boolean
+              executionConditions:
+                description: |-
+                  ExecutionConditions are conditions that must be met before executing the schedule
+                  All conditions must pass for the schedule to execute
+                  Example: Check that all water_level sensors are not alerting
+                items:
+                  description: ExecutionCondition defines a condition that must be
+                    met before executing a schedule
+                  properties:
+                    alert:
+                      description: |-
+                        Alert indicates whether to check for alert status on matching devices
+                        If true, condition passes only if no matching devices have an alert
+                        If false, condition passes only if all matching devices have an alert
+                        Cannot be used together with Measurement
+                      type: boolean
+                    measurement:
+                      description: |-
+                        Measurement is the name of the measurement field to check in device telemetry
+                        Example fields: "temperature", "humidity", "battery", "moisture"
+                        Cannot be used together with Alert
+                      type: string
+                    message:
+                      description: Message is a custom message to include in status
+                        when this condition fails
+                      type: string
+                    operator:
+                      description: |-
+                        Operator defines how to compare the measurement value
+                        Required when Measurement is specified
+                      enum:
+                      - eq
+                      - ne
+                      - gt
+                      - ge
+                      - lt
+                      - le
+                      type: string
+                    sensorType:
+                      description: |-
+                        SensorType is the type of sensor to check (e.g., "water_level", "moisture", "temperature")
+                        This matches the Device.Spec.SensorType field
+                      minLength: 1
+                      type: string
+                    value:
+                      description: |-
+                        Value is the value to compare against
+                        Can be a number (e.g., "25.5") or boolean (e.g., "true")
+                        Required when Measurement is specified
+                      type: string
+                  required:
+                  - sensorType
+                  type: object
+                type: array
               timeZone:
                 default: UTC
                 description: |-
@@ -188,6 +242,18 @@ spec:
                   - type
                   type: object
                 type: array
+              conditionsLastChecked:
+                description: ConditionsLastChecked is when execution conditions were
+                  last evaluated
+                format: date-time
+                type: string
+              conditionsMessage:
+                description: ConditionsMessage provides details about condition evaluation
+                type: string
+              conditionsPassed:
+                description: ConditionsPassed indicates whether all execution conditions
+                  passed on last check
+                type: boolean
               lastCompletionTime:
                 description: LastCompletionTime is when the irrigation finished
                 format: date-time

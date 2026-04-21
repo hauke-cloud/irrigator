@@ -20,6 +20,56 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// ComparisonOperator defines operators for comparing values in conditions
+// +kubebuilder:validation:Enum=eq;ne;gt;ge;lt;le
+type ComparisonOperator string
+
+const (
+	OperatorEqual              ComparisonOperator = "eq" // Equal
+	OperatorNotEqual           ComparisonOperator = "ne" // Not Equal
+	OperatorGreaterThan        ComparisonOperator = "gt" // Greater Than
+	OperatorGreaterThanOrEqual ComparisonOperator = "ge" // Greater Than or Equal
+	OperatorLessThan           ComparisonOperator = "lt" // Less Than
+	OperatorLessThanOrEqual    ComparisonOperator = "le" // Less Than or Equal
+)
+
+// ExecutionCondition defines a condition that must be met before executing a schedule
+type ExecutionCondition struct {
+	// SensorType is the type of sensor to check (e.g., "water_level", "moisture", "temperature")
+	// This matches the Device.Spec.SensorType field
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	SensorType string `json:"sensorType"`
+
+	// Alert indicates whether to check for alert status on matching devices
+	// If true, condition passes only if no matching devices have an alert
+	// If false, condition passes only if all matching devices have an alert
+	// Cannot be used together with Measurement
+	// +optional
+	Alert *bool `json:"alert,omitempty"`
+
+	// Measurement is the name of the measurement field to check in device telemetry
+	// Example fields: "temperature", "humidity", "battery", "moisture"
+	// Cannot be used together with Alert
+	// +optional
+	Measurement string `json:"measurement,omitempty"`
+
+	// Operator defines how to compare the measurement value
+	// Required when Measurement is specified
+	// +optional
+	Operator ComparisonOperator `json:"operator,omitempty"`
+
+	// Value is the value to compare against
+	// Can be a number (e.g., "25.5") or boolean (e.g., "true")
+	// Required when Measurement is specified
+	// +optional
+	Value string `json:"value,omitempty"`
+
+	// Message is a custom message to include in status when this condition fails
+	// +optional
+	Message string `json:"message,omitempty"`
+}
+
 // ScheduleSpec defines the desired state of Schedule
 type ScheduleSpec struct {
 	// DeviceName is the name of the Device CR to control
@@ -74,6 +124,12 @@ type ScheduleSpec struct {
 	// +kubebuilder:default=false
 	// +optional
 	DryRun bool `json:"dryRun,omitempty"`
+
+	// ExecutionConditions are conditions that must be met before executing the schedule
+	// All conditions must pass for the schedule to execute
+	// Example: Check that all water_level sensors are not alerting
+	// +optional
+	ExecutionConditions []ExecutionCondition `json:"executionConditions,omitempty"`
 }
 
 // ScheduleStatus defines the observed state of Schedule
@@ -125,6 +181,18 @@ type ScheduleStatus struct {
 	// Message provides additional information about the current state
 	// +optional
 	Message string `json:"message,omitempty"`
+
+	// ConditionsLastChecked is when execution conditions were last evaluated
+	// +optional
+	ConditionsLastChecked *metav1.Time `json:"conditionsLastChecked,omitempty"`
+
+	// ConditionsPassed indicates whether all execution conditions passed on last check
+	// +optional
+	ConditionsPassed *bool `json:"conditionsPassed,omitempty"`
+
+	// ConditionsMessage provides details about condition evaluation
+	// +optional
+	ConditionsMessage string `json:"conditionsMessage,omitempty"`
 
 	// Conditions represent the latest available observations of the schedule's state
 	// +optional

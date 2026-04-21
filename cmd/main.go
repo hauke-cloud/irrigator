@@ -224,11 +224,19 @@ func main() {
 	)
 	setupLog.Info("Created Valve Controller")
 
+	// Create Condition Evaluator for checking execution conditions
+	conditionEvaluator := controller.NewConditionEvaluator(
+		mgr.GetClient(),
+		zapLog.With(uberzap.String("component", "conditions")),
+	)
+	setupLog.Info("Created Condition Evaluator")
+
 	if err := (&controller.ScheduleReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		Log:             zapLog.With(uberzap.String("controller", "Schedule")),
-		ValveController: valveController,
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		Log:                zapLog.With(uberzap.String("controller", "Schedule")),
+		ValveController:    valveController,
+		ConditionEvaluator: conditionEvaluator,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "Schedule")
 		os.Exit(1)

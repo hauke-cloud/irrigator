@@ -15,6 +15,7 @@ A Kubernetes operator that manages automated irrigation schedules for Tasmota-co
 - **Timezone Support**: Configure schedules in your local timezone
 - **Duration Control**: Specify how long valves should remain open (in seconds)
 - **Enable/Disable**: Easily enable or disable schedules without deleting them
+- **Execution Conditions**: Define conditions that must be met before irrigation (e.g., check water levels, soil moisture, temperature)
 - **Dry-Run Mode**: Test schedules and see execution plans without actually controlling valves
 - **Status Tracking**: Monitor last run, next run, and current irrigation state
 - **Automatic Valve Control**: Automatically turns valves on and off via Tasmota MQTT commands
@@ -40,6 +41,7 @@ The primary resource managed by this operator. Defines when and how long to irri
 - `enabled`: Whether schedule is active (default: true)
 - `timeZone`: Timezone for cron schedule (default: UTC)
 - `dryRun`: Enable dry-run mode - logs execution plan without sending MQTT commands (default: false)
+- `executionConditions`: Optional list of conditions that must be met before executing (e.g., check water levels, soil moisture)
 
 **Status Fields:**
 - `resolvedDeviceName`: The actual Device CR name that was found
@@ -49,7 +51,10 @@ The primary resource managed by this operator. Defines when and how long to irri
 - `lastCompletionTime`: When irrigation finished
 - `nextScheduledTime`: Next scheduled run time
 - `active`: Whether irrigation is currently running
-- `lastStatus`: Result of last execution (Running/Completed/Failed/DryRun/DryRunCompleted)
+- `lastStatus`: Result of last execution (Running/Completed/Failed/DryRun/DryRunCompleted/ConditionsNotMet)
+- `conditionsLastChecked`: When execution conditions were last evaluated
+- `conditionsPassed`: Whether all execution conditions passed
+- `conditionsMessage`: Details about condition evaluation
 
 #### MQTTBridge (Read-Only)
 Represents an MQTT broker connection to Tasmota. Managed by an external device management controller.
@@ -256,14 +261,37 @@ Watch the logs to see execution plans:
 kubectl logs -n irrigator-system deployment/irrigator-controller-manager -f | grep DRY-RUN
 ```
 
+#### Execution Conditions
+
+Control when irrigation runs based on sensor data:
+
+```yaml
+spec:
+  executionConditions:
+    # Don't irrigate if water level is alerting
+    - sensorType: water_level
+      alert: false
+      message: "Water tank level is low"
+    
+    # Only irrigate if soil moisture is below 60%
+    - sensorType: moisture
+      measurement: moisture
+      operator: lt
+      value: "60"
+      message: "Soil moisture is sufficient"
+```
+
+See [EXECUTION_CONDITIONS.md](EXECUTION_CONDITIONS.md) for detailed documentation and examples.
+
 ## How It Works
 
 1. **Reconciliation Loop**: The Schedule controller runs every 30 seconds to check for scheduled irrigation times
 2. **Execution Detection**: When the current time matches the cron schedule (within ±30 seconds), irrigation starts
-3. **Valve Control**: The controller delegates to the ValveController which sends MQTT `ZbSend` commands to Tasmota
-4. **Duration Monitoring**: While irrigation is active, the controller checks every 10 seconds
-5. **Automatic Shutoff**: When the specified duration elapses, the valve is automatically turned off
-6. **Power State Tracking**: The controller reads the valve's power state from Device status (updated by telemetry from external controller)
+3. **Condition Evaluation**: If execution conditions are defined, all conditions are evaluated before starting irrigation
+4. **Valve Control**: If conditions pass (or no conditions defined), the controller delegates to the ValveController which sends MQTT `ZbSend` commands to Tasmota
+5. **Duration Monitoring**: While irrigation is active, the controller checks every 10 seconds
+6. **Automatic Shutoff**: When the specified duration elapses, the valve is automatically turned off
+7. **Power State Tracking**: The controller reads the valve's power state from Device status (updated by telemetry from external controller)
 
 ### MQTT Commands
 
@@ -409,6 +437,7 @@ kubectl logs -n irrigator-system deployment/irrigator-controller-manager -f
 
 - [QUICKSTART.md](QUICKSTART.md) - Quick start guide with examples
 - [IRRIGATION.md](IRRIGATION.md) - Detailed irrigation scheduler documentation
+- [EXECUTION_CONDITIONS.md](EXECUTION_CONDITIONS.md) - Execution conditions documentation
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Contributing guidelines
 
 ## Contributing
