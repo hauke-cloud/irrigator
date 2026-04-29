@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: mqttbridges.mqtt.hauke.cloud
+  name: mqttbridges.iot.hauke.cloud
 spec:
-  group: mqtt.hauke.cloud
+  group: iot.hauke.cloud
   names:
     kind: MQTTBridge
     listKind: MQTTBridgeList
@@ -79,7 +79,7 @@ spec:
                     type: string
                   namespace:
                     description: Namespace of the secret. If not specified, uses the
-                      same namespace as the MQTTBridge
+                      same namespace as the resource
                     type: string
                 required:
                 - name
@@ -110,82 +110,6 @@ spec:
                 maximum: 65535
                 minimum: 1
                 type: integer
-              sensorTopics:
-                description: |-
-                  SensorTopics contains topics for sensor data and telemetry
-                  These are used by mqtt-sensor-exporter for metrics collection
-                  Examples: tele/+/SENSOR
-                items:
-                  description: TopicSubscription defines an MQTT topic to subscribe
-                    to with its type
-                  properties:
-                    qos:
-                      default: 0
-                      description: |-
-                        QoS is the MQTT Quality of Service level for this subscription
-                        0 = At most once, 1 = At least once, 2 = Exactly once
-                      format: int32
-                      maximum: 2
-                      minimum: 0
-                      type: integer
-                    topic:
-                      description: |-
-                        Topic is the MQTT topic pattern to subscribe to
-                        Supports MQTT wildcards: + (single level), # (multi-level)
-                        Examples: "tele/+/SENSOR", "stat/tasmota_123/RESULT", "zigbee2mqtt/#"
-                      minLength: 1
-                      type: string
-                    type:
-                      description: |-
-                        Type indicates how to process messages from this topic
-                        For Tasmota: "telemetry", "status", "state", "result"
-                        For Zigbee2MQTT: "device", "bridge"
-                        For Generic: "sensor", "command", "status", or custom
-                      minLength: 1
-                      type: string
-                  required:
-                  - topic
-                  - type
-                  type: object
-                type: array
-              stateTopics:
-                description: |-
-                  StateTopics contains topics for device state and control messages
-                  These are used by mqtt-device-manager for device management and control
-                  Examples: stat/+/RESULT, tele/+/STATE, tele/+/INFO1
-                items:
-                  description: TopicSubscription defines an MQTT topic to subscribe
-                    to with its type
-                  properties:
-                    qos:
-                      default: 0
-                      description: |-
-                        QoS is the MQTT Quality of Service level for this subscription
-                        0 = At most once, 1 = At least once, 2 = Exactly once
-                      format: int32
-                      maximum: 2
-                      minimum: 0
-                      type: integer
-                    topic:
-                      description: |-
-                        Topic is the MQTT topic pattern to subscribe to
-                        Supports MQTT wildcards: + (single level), # (multi-level)
-                        Examples: "tele/+/SENSOR", "stat/tasmota_123/RESULT", "zigbee2mqtt/#"
-                      minLength: 1
-                      type: string
-                    type:
-                      description: |-
-                        Type indicates how to process messages from this topic
-                        For Tasmota: "telemetry", "status", "state", "result"
-                        For Zigbee2MQTT: "device", "bridge"
-                        For Generic: "sensor", "command", "status", or custom
-                      minLength: 1
-                      type: string
-                  required:
-                  - topic
-                  - type
-                  type: object
-                type: array
               tls:
                 description: TLS configuration for secure MQTT connection
                 properties:
@@ -199,7 +123,7 @@ spec:
                         type: string
                       namespace:
                         description: Namespace of the secret. If not specified, uses
-                          the same namespace as the MQTTBridge
+                          the same namespace as the resource
                         type: string
                     required:
                     - name
@@ -216,18 +140,11 @@ spec:
                 required:
                 - enabled
                 type: object
-              topicPrefix:
-                description: |-
-                  TopicPrefix is the base topic to subscribe to for device discovery
-                  For Zigbee2MQTT, this is typically "zigbee2mqtt"
-                  For Tasmota with multiple topics, use StateTopics and SensorTopics instead
-                type: string
               topics:
                 description: |-
                   Topics is a list of topic subscriptions with their types
                   Use this for advanced configurations like Tasmota with multiple topic types
                   If specified, TopicPrefix is ignored
-                  Deprecated: Use StateTopics and SensorTopics instead for better separation of concerns
                 items:
                   description: TopicSubscription defines an MQTT topic to subscribe
                     to with its type

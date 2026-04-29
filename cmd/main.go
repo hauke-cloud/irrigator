@@ -21,7 +21,6 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -30,11 +29,9 @@ import (
 	uberzap "go.uber.org/zap"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -42,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	mqttv1alpha1 "github.com/hauke-cloud/irrigator/api/v1alpha1"
+	"github.com/hauke-cloud/irrigator/cmd/crds"
 	"github.com/hauke-cloud/irrigator/internal/alerts"
 	"github.com/hauke-cloud/irrigator/internal/controller"
 	"github.com/hauke-cloud/irrigator/internal/mqtt"
@@ -57,9 +55,9 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(mqttv1alpha1.AddToScheme(scheme))
 	utilruntime.Must(iotv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -72,7 +70,6 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var installCRDs bool
 	var alertsAPIURL string
 	var alertsCertPath, alertsCertName, alertsCertKey, alertsCAName string
 	var tlsOpts []func(*tls.Config)
@@ -84,8 +81,6 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.BoolVar(&installCRDs, "install-crds", true,
-		"If set, the operator will automatically install/upgrade CRDs at startup.")
 	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
 	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
 	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
@@ -197,29 +192,25 @@ func main() {
 		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
-		setupLog.Error(err, "Failed to start manager")
+		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
-	// Install/upgrade CRDs if enabled
-	if installCRDs {
-		setupLog.Info("Installing/upgrading CRDs")
-		if err := installOrUpgradeCRDs(mgr); err != nil {
-			setupLog.Error(err, "Failed to install/upgrade CRDs")
-			os.Exit(1)
-		}
-		setupLog.Info("CRDs installed/upgraded successfully")
-	}
-
-	// Create MQTT BridgeManager
+	// Install/Update CRDs before starting controllers
+	ctx := context.Background()
 	zapLog, err := uberzap.NewDevelopment()
 	if err != nil {
-		setupLog.Error(err, "Failed to create zap logger")
+		setupLog.Error(err, "unable to set up zap logger")
 		os.Exit(1)
 	}
 	defer func() {
 		_ = zapLog.Sync()
 	}()
+
+	if err := crds.Install(ctx, zapLog); err != nil {
+		setupLog.Error(err, "failed to install CRDs")
+		os.Exit(1)
+	}
 
 	// Create MQTT BridgeManager
 	mqttManager := mqtt.NewBridgeManager(mgr.GetClient(), zapLog)
@@ -270,77 +261,17 @@ func main() {
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "Failed to set up health check")
+		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)
 	}
 	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "Failed to set up ready check")
+		setupLog.Error(err, "unable to set up ready check")
 		os.Exit(1)
 	}
 
-	setupLog.Info("Starting manager")
+	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "Failed to run manager")
+		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
-}
-
-// installOrUpgradeCRDs installs or upgrades the CRDs for this operator
-func installOrUpgradeCRDs(mgr ctrl.Manager) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
-	// Get the Kubernetes config
-	cfg := mgr.GetConfig()
-
-	// Create a client that can work with CRDs
-	crdScheme := runtime.NewScheme()
-	utilruntime.Must(apiextensionsv1.AddToScheme(crdScheme))
-
-	c, err := client.New(cfg, client.Options{Scheme: crdScheme})
-	if err != nil {
-		return err
-	}
-
-	// Create decoder for CRD YAML
-	decode := serializer.NewCodecFactory(crdScheme).UniversalDeserializer().Decode
-
-	// List of CRD YAML definitions (embedded in the binary)
-	// Note: Only Schedule CRD is managed by this operator.
-	// MQTTBridge and Device CRDs are managed by external controller.
-	crdYAMLs := []string{
-		scheduleCRD,
-	}
-
-	for _, crdYAML := range crdYAMLs {
-		obj, _, err := decode([]byte(crdYAML), nil, nil)
-		if err != nil {
-			return err
-		}
-
-		crd, ok := obj.(*apiextensionsv1.CustomResourceDefinition)
-		if !ok {
-			continue
-		}
-
-		// Try to get existing CRD
-		existingCRD := &apiextensionsv1.CustomResourceDefinition{}
-		err = c.Get(ctx, client.ObjectKey{Name: crd.Name}, existingCRD)
-		if err != nil {
-			// CRD doesn't exist, create it
-			if err := c.Create(ctx, crd); err != nil {
-				return err
-			}
-			setupLog.Info("Created CRD", "name", crd.Name)
-		} else {
-			// CRD exists, update it
-			crd.ResourceVersion = existingCRD.ResourceVersion
-			if err := c.Update(ctx, crd); err != nil {
-				return err
-			}
-			setupLog.Info("Updated CRD", "name", crd.Name)
-		}
-	}
-
-	return nil
 }

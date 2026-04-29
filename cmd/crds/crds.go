@@ -14,18 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package crds
 
 import (
 	_ "embed"
 )
 
-// Embed CRD YAML files into the binary
-// These files are generated from kubernetes-iot-api types
+// Embed CRD manifests
+//
+//go:embed iot.hauke.cloud_schedules.yaml
+var ScheduleCRD []byte
 
-// Note: MQTTBridge and Device CRDs are NOT embedded or installed by this operator.
-// These CRDs are managed by the external device management controller.
-// This operator only manages the Schedule CRD.
-
-//go:embed crd/iot.hauke.cloud_schedules.yaml
-var scheduleCRD string
+// GetAll returns all CRD manifests that should be installed by this controller
+// Note: MQTTBridge and Device CRDs are managed by external controller
+func GetAll() [][]byte {
+	return [][]byte{
+		ScheduleCRD,
+	}
+}

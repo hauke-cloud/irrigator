@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.20.1
-  name: devices.mqtt.hauke.cloud
+  name: devices.iot.hauke.cloud
 spec:
-  group: mqtt.hauke.cloud
+  group: iot.hauke.cloud
   names:
     kind: Device
     listKind: DeviceList
@@ -24,24 +24,15 @@ spec:
     - jsonPath: .spec.sensorType
       name: Sensor Type
       type: string
-    - jsonPath: .status.batteryPercentage
-      name: Battery
-      type: integer
     - jsonPath: .status.linkQuality
       name: Link Quality
       type: integer
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
-    - jsonPath: .status.deviceType
-      name: Type
-      type: string
     - jsonPath: .status.available
       name: Available
       type: boolean
-    - jsonPath: .status.batteryLevel
-      name: Battery
-      type: integer
     - jsonPath: .status.lastSeen
       name: Last Seen
       type: date
@@ -70,6 +61,36 @@ spec:
           spec:
             description: spec defines the desired state of Device
             properties:
+              alertCondition:
+                description: |-
+                  AlertCondition defines a condition that triggers an alert when met
+                  When the condition evaluates to true, status.alert is set to true
+                properties:
+                  measurement:
+                    description: Measurement is the name of the measurement to check
+                      (e.g., "temperature", "humidity")
+                    minLength: 1
+                    type: string
+                  operator:
+                    description: |-
+                      Operator defines the comparison operator
+                      Supported operators: "above", "below", "is"
+                    enum:
+                    - above
+                    - below
+                    - is
+                    type: string
+                  value:
+                    description: |-
+                      Value is the threshold value to compare against
+                      Stored as string for cross-language compatibility (e.g., "25.0", "30.5")
+                    pattern: ^-?\d+(\.\d+)?$
+                    type: string
+                required:
+                - measurement
+                - operator
+                - value
+                type: object
               bridgeRef:
                 description: |-
                   BridgeRef references the MQTTBridge this device belongs to
@@ -84,6 +105,13 @@ spec:
                     type: string
                 required:
                 - name
+                type: object
+              corrections:
+                additionalProperties:
+                  type: string
+                description: |-
+                  Corrections is an optional value that can be used to apply correction factors to the device's measurements
+                  Values are stored as strings to ensure cross-language compatibility (e.g., "2.5", "-1.8")
                 type: object
               disabled:
                 default: false
@@ -114,7 +142,7 @@ spec:
                 description: |-
                   SensorType specifies what type of measurements this device provides
                   This determines which database and GORM handler to use for storing data
-                  Supported types: "valve", "moisture", "power", "solar", "temperature", "humidity", "pressure"
+                  Supported types: "valve", "moisture", "power", "solar", "temperature", "humidity", "pressure", "water_level", "room"
                 enum:
                 - valve
                 - moisture
@@ -123,6 +151,8 @@ spec:
                 - temperature
                 - humidity
                 - pressure
+                - water_level
+                - room
                 type: string
             required:
             - bridgeRef
@@ -131,36 +161,13 @@ spec:
           status:
             description: status defines the observed state of Device
             properties:
+              alert:
+                description: Alert show if this device triggered the alert condition
+                type: boolean
               available:
                 description: Available indicates whether the device is currently reachable
                   (deprecated, use Reachable)
                 type: boolean
-              batteryLastSeenEpoch:
-                description: BatteryLastSeenEpoch is the Unix epoch timestamp when
-                  battery level was last updated
-                format: int64
-                type: integer
-              batteryLevel:
-                description: BatteryLevel indicates the battery percentage (0-100)
-                  if applicable (deprecated, use BatteryPercentage)
-                format: int32
-                maximum: 100
-                minimum: 0
-                type: integer
-              batteryPercentage:
-                description: BatteryPercentage indicates the battery percentage (0-100)
-                  if applicable
-                format: int32
-                maximum: 100
-                minimum: 0
-                type: integer
-              capabilities:
-                description: |-
-                  Capabilities lists what the device can measure or control
-                  Examples: temperature, humidity, pressure, battery, water_leak, occupancy
-                items:
-                  type: string
-                type: array
               conditions:
                 description: Conditions represent the current state of the Device
                   resource.
@@ -222,19 +229,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              deviceType:
-                description: DeviceType indicates the type of device (e.g., sensor,
-                  actuator, switch)
-                type: string
-              lastMeasurement:
-                description: LastMeasurement contains the most recent measurement
-                  data as JSON string
-                type: string
-              lastPowerState:
-                description: |-
-                  LastPowerState indicates the last known power state for valve/switch devices
-                  0 = OFF, 1 = ON, nil = unknown
-                type: integer
               lastSeen:
                 description: LastSeen is the timestamp when the device last sent data
                 format: date-time
