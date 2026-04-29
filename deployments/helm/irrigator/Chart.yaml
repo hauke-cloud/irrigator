@@ -1,17 +1,17 @@
 apiVersion: v2
 name: irrigator
-description: A Helm chart for MQTT Sensor Exporter - Kubernetes operator for IoT sensor data
+description: A Helm chart for Irrigator - Kubernetes operator for automated irrigation scheduling
 type: application
-version: 0.1.0
-appVersion: "1.0.0"
+version: 0.2.0
+appVersion: "2.0.0"
 keywords:
   - mqtt
   - iot
-  - sensors
-  - zigbee
+  - irrigation
+  - scheduling
+  - valve
   - tasmota
-  - zigbee2mqtt
-  - timescaledb
+  - zigbee
   - kubernetes
   - operator
 home: https://github.com/hauke-cloud/irrigator
@@ -20,3 +20,6 @@ sources:
 maintainers:
   - name: hauke-cloud
     email: contact@hauke.cloud
+dependencies: []
+# This chart now requires kubernetes-iot-api CRDs to be installed
+# CRDs can be auto-installed by the operator or by mqtt-sensor-exporter

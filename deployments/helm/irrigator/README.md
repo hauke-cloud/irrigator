@@ -1,205 +1,184 @@
-# MQTT Sensor Exporter Helm Chart
+# Irrigator Helm Chart
 
-This Helm chart deploys the MQTT Sensor Exporter Kubernetes operator.
-
-## Overview
-
-The MQTT Sensor Exporter is a Kubernetes operator that manages IoT sensor data from MQTT brokers (Tasmota, Zigbee2MQTT) and stores measurements in TimescaleDB.
+Kubernetes operator for automated irrigation scheduling with Tasmota valve devices.
 
 ## Prerequisites
 
-- Kubernetes 1.28+
+- Kubernetes 1.29+
 - Helm 3.0+
+- mqtt-sensor-exporter deployed (for alerts API)
+- Client certificates for sensor exporter API access
 
 ## Installation
 
-### Install from OCI registry
+### 1. Create Client Certificate Secret
+
+First, create a secret containing the client certificates for accessing the sensor exporter API:
 
 ```bash
-helm install irrigator \
-  oci://ghcr.io/hauke-cloud/charts/irrigator \
-  --version 0.1.0
+kubectl create secret generic irrigator-sensor-exporter-client-cert \
+  --from-file=tls.crt=path/to/client.crt \
+  --from-file=tls.key=path/to/client.key \
+  --from-file=ca.crt=path/to/ca.crt \
+  -n your-namespace
 ```
 
-### Install from local chart
-
-```bash
-helm install irrigator ./deployments/helm/irrigator
-```
-
-### Install with custom values
+### 2. Install the Chart
 
 ```bash
 helm install irrigator ./deployments/helm/irrigator \
-  --values my-values.yaml
+  --namespace your-namespace \
+  --create-namespace
+```
+
+Or with custom values:
+
+```bash
+helm install irrigator ./deployments/helm/irrigator \
+  --namespace your-namespace \
+  --values your-values.yaml
 ```
 
 ## Configuration
 
-### Basic Configuration
-
-```yaml
-# values.yaml
-image:
-  repository: ghcr.io/hauke-cloud/irrigator
-  tag: "1.0.0"
-
-resources:
-  limits:
-    cpu: 500m
-    memory: 128Mi
-  requests:
-    cpu: 10m
-    memory: 64Mi
-
-operator:
-  installCRDs: true
-  leaderElection: true
-```
-
-### Disable Automatic CRD Installation
-
-If you want to manage CRDs separately:
-
-```yaml
-operator:
-  installCRDs: false
-
-crds:
-  install: false
-```
-
-### Enable Monitoring
-
-```yaml
-monitoring:
-  serviceMonitor:
-    enabled: true
-    interval: 30s
-```
-
-## Parameters
-
-### Global Parameters
+### Essential Configuration
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `replicaCount` | Number of replicas | `1` |
-| `image.repository` | Image repository | `ghcr.io/hauke-cloud/irrigator` |
-| `image.tag` | Image tag | Chart appVersion |
-| `image.pullPolicy` | Image pull policy | `IfNotPresent` |
+| `sensorExporterAPI.url` | URL of sensor exporter API | `https://mqtt-sensor-exporter.mqtt.svc.cluster.local:8443` |
+| `sensorExporterAPI.secretName` | Secret containing client certificates | `irrigator-sensor-exporter-client-cert` |
 
-### Operator Parameters
+### Advanced Configuration
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `operator.installCRDs` | Auto-install CRDs at startup | `true` |
 | `operator.leaderElection` | Enable leader election | `true` |
-| `operator.metrics.enabled` | Enable metrics endpoint | `true` |
-| `operator.metrics.port` | Metrics port | `8443` |
-| `operator.health.port` | Health probe port | `8081` |
-
-### Resource Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
+| `logging.level` | Log level (debug/info/warn/error) | `info` |
 | `resources.limits.cpu` | CPU limit | `500m` |
 | `resources.limits.memory` | Memory limit | `128Mi` |
-| `resources.requests.cpu` | CPU request | `10m` |
-| `resources.requests.memory` | Memory request | `64Mi` |
 
-### Logging Parameters
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `logging.level` | Log level (debug, info, warn, error) | `info` |
-| `logging.format` | Log format (json, console) | `json` |
-
-## Usage
-
-After installation, create MQTTBridge and Database resources:
-
-### Create MQTT Credentials
-
-```bash
-kubectl create secret generic mqtt-credentials \
-  --from-literal=username='mqtt-user' \
-  --from-literal=password='mqtt-password'
-```
-
-### Create Database Credentials
-
-```bash
-kubectl create secret generic db-credentials \
-  --from-literal=password='db-password'
-```
-
-### Deploy MQTTBridge
-
-```yaml
-apiVersion: mqtt.hauke.cloud/v1alpha1
-kind: MQTTBridge
-metadata:
-  name: tasmota-bridge
-spec:
-  host: "mqtt.local"
-  port: 1883
-  credentialsSecretRef:
-    name: mqtt-credentials
-  deviceType: "tasmota"
-  topics:
-    - topic: "tele/+/SENSOR"
-      type: "telemetry"
-```
-
-### Deploy Database
-
-```yaml
-apiVersion: mqtt.hauke.cloud/v1alpha1
-kind: Database
-metadata:
-  name: irrigation-db
-spec:
-  host: "timescaledb.default.svc.cluster.local"
-  port: 5432
-  database: "irrigation_sensors"
-  username: "irrigation_writer"
-  passwordSecretRef:
-    name: db-credentials
-  supportedSensorTypes:
-    - "irrigation"
-```
+See [values.yaml](values.yaml) for all available options.
 
 ## Upgrading
 
-```bash
-helm upgrade irrigator \
-  oci://ghcr.io/hauke-cloud/charts/irrigator \
-  --version 0.2.0
+### From v0.1.x to v0.2.x
+
+**⚠️ Breaking Change**: API group changed from `mqtt.hauke.cloud` to `iot.hauke.cloud`
+
+See [MIGRATION.md](../MIGRATION.md) for detailed upgrade instructions.
+
+## Usage
+
+### Create a Schedule
+
+```yaml
+apiVersion: iot.hauke.cloud/v1alpha1
+kind: Schedule
+metadata:
+  name: morning-watering
+  namespace: default
+spec:
+  deviceName: garden-valve-1
+  cronExpression: "0 6 * * *"  # Every day at 6:00 AM
+  durationSeconds: 1800         # 30 minutes
+  enabled: true
+  timeZone: "Europe/Berlin"
+  executionConditions:
+    - sensorType: water_level
+      alert: false
+      message: "Water tank level is low"
 ```
 
-## Uninstalling
+### Check Schedule Status
 
 ```bash
-helm uninstall irrigator
+# List all schedules
+kubectl get schedules -A
+
+# Get detailed status
+kubectl describe schedule morning-watering
+
+# Watch schedule execution
+kubectl get schedule morning-watering -w
 ```
 
-**Note:** CRDs are not automatically removed. To remove them:
+## Architecture
+
+The irrigator operator:
+- **Watches**: Device and MQTTBridge CRs (read-only, managed by mqtt-device-manager)
+- **Manages**: Schedule CRs (full CRUD)
+- **Controls**: Valve devices via MQTT commands
+- **Checks**: Execution conditions via sensor exporter alerts API
+
+```
+┌─────────────────┐
+│   Irrigator     │
+│   Operator      │
+└────────┬────────┘
+         │
+    ┌────┴────────────────────────────┐
+    │                                 │
+    ▼                                 ▼
+┌─────────────┐            ┌──────────────────┐
+│  MQTT       │            │  Sensor Exporter │
+│  Bridge     │            │  API (mTLS)      │
+└─────────────┘            └──────────────────┘
+    │                                 │
+    ▼                                 ▼
+┌─────────────┐            ┌──────────────────┐
+│  Tasmota    │            │  Alerts          │
+│  Valves     │            │  Endpoint        │
+└─────────────┘            └──────────────────┘
+```
+
+## Troubleshooting
+
+### Check Operator Logs
 
 ```bash
-kubectl delete crd mqttbridges.mqtt.hauke.cloud
-kubectl delete crd devices.mqtt.hauke.cloud
-kubectl delete crd databases.mqtt.hauke.cloud
+kubectl logs -n your-namespace deployment/irrigator -f
 ```
 
-## Documentation
+### Verify API Connectivity
 
-- [Project README](https://github.com/hauke-cloud/irrigator)
-- [Database CRD](../../../DATABASE_CRD.md)
-- [Device Sensor Types](../../../DEVICE_SENSOR_TYPE.md)
-- [Sensor Type Mapping](../../../SENSOR_TYPE_MAPPING.md)
+```bash
+kubectl logs -n your-namespace deployment/irrigator | grep -i "alerts\|sensor.*exporter"
+```
+
+### Check RBAC Permissions
+
+```bash
+kubectl auth can-i list schedules.iot.hauke.cloud --as=system:serviceaccount:your-namespace:irrigator
+```
+
+### Certificate Issues
+
+```bash
+# Verify secret exists
+kubectl get secret irrigator-sensor-exporter-client-cert -n your-namespace
+
+# Check certificate mount
+kubectl describe pod -n your-namespace -l control-plane=controller-manager | grep -A 5 "Mounts:"
+```
+
+## Uninstallation
+
+```bash
+helm uninstall irrigator -n your-namespace
+```
+
+**Note**: By default, CRDs are kept after uninstallation. To remove them:
+
+```bash
+kubectl delete crd schedules.iot.hauke.cloud
+```
 
 ## Support
 
-For issues and questions, please open an issue at:
-https://github.com/hauke-cloud/irrigator/issues
+- GitHub Issues: https://github.com/hauke-cloud/irrigator/issues
+- Email: contact@hauke.cloud
+
+## License
+
+Apache License 2.0

@@ -1,0 +1,137 @@
+# Example values for irrigator with sensor exporter API
+# This example shows a typical production configuration
+
+# Image configuration
+image:
+  repository: ghcr.io/hauke-cloud/irrigator
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Replica count
+replicaCount: 1
+
+# Operator configuration
+operator:
+  # Enable automatic CRD installation
+  installCRDs: true
+  # Enable leader election (recommended for HA)
+  leaderElection: true
+  
+  # Metrics endpoint
+  metrics:
+    enabled: true
+    port: 8080
+  
+  # Health probes
+  health:
+    port: 8081
+
+# Sensor Exporter API configuration
+sensorExporterAPI:
+  # URL of the mqtt-sensor-exporter service
+  # Adjust namespace and service name as needed
+  url: "https://mqtt-sensor-exporter.mqtt.svc.cluster.local:8443"
+  
+  # Path where certificates will be mounted (internal to pod)
+  certPath: "/etc/sensor-exporter-certs"
+  
+  # Certificate file names in the secret
+  certFile: "tls.crt"
+  keyFile: "tls.key"
+  caFile: "ca.crt"
+  
+  # Name of the secret containing client certificates
+  # Create this secret before deploying:
+  #   kubectl create secret generic irrigator-sensor-exporter-client-cert \
+  #     --from-file=tls.crt=client.crt \
+  #     --from-file=tls.key=client.key \
+  #     --from-file=ca.crt=ca.crt \
+  #     -n your-namespace
+  secretName: "irrigator-sensor-exporter-client-cert"
+  
+  # Skip TLS verification (NOT RECOMMENDED for production)
+  skipVerify: false
+
+# Logging configuration
+logging:
+  # Log level: debug, info, warn, error
+  level: "info"
+  # Log format: json, console
+  format: "json"
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+# Security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# RBAC
+rbac:
+  create: true
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Node selector
+nodeSelector: {}
+  # Example: run only on specific nodes
+  # workload: controllers
+
+# Tolerations
+tolerations: []
+  # Example: tolerate control-plane taint
+  # - key: "node-role.kubernetes.io/control-plane"
+  #   operator: "Exists"
+  #   effect: "NoSchedule"
+
+# Affinity
+affinity: {}
+  # Example: anti-affinity to avoid multiple replicas on same node
+  # podAntiAffinity:
+  #   preferredDuringSchedulingIgnoredDuringExecution:
+  #   - weight: 100
+  #     podAffinityTerm:
+  #       labelSelector:
+  #         matchExpressions:
+  #         - key: control-plane
+  #           operator: In
+  #           values:
+  #           - controller-manager
+  #       topologyKey: kubernetes.io/hostname
+
+# Monitoring
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+      # Example: add labels for Prometheus to discover
+      # prometheus: kube-prometheus
+
+# CRD installation
+crds:
+  # Install CRDs via Helm (in addition to operator auto-install)
+  install: true
+  # Keep CRDs when uninstalling chart
+  keep: true

@@ -129,3 +129,19 @@ logging:
   level: "info"
   # Log format: json, console
   format: "json"
+
+# Sensor Exporter API configuration
+sensorExporterAPI:
+  # Base URL for the sensor exporter API endpoint
+  url: "https://mqtt-sensor-exporter.mqtt.svc.cluster.local:8443"
+  # Path to directory containing client certificates for mTLS
+  certPath: "/etc/sensor-exporter-certs"
+  # Names of certificate files
+  certFile: "tls.crt"
+  keyFile: "tls.key"
+  caFile: "ca.crt"
+  # Name of the secret containing the client certificates
+  # Secret should contain keys: tls.crt, tls.key, ca.crt
+  secretName: "irrigator-sensor-exporter-client-cert"
+  # Skip TLS verification (not recommended for production)
+  skipVerify: false

@@ -138,9 +138,7 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	// Update device status
 	schedule.Status.ResolvedDeviceName = device.Name
-	if device.Status.LastPowerState != nil {
-		schedule.Status.ValvePowerState = device.Status.LastPowerState
-	}
+	// Note: ValvePowerState removed - power state is now tracked by mqtt-sensor-exporter
 
 	// Create or update the cron job
 	if err := r.ensureJob(ctx, schedule, device, loc, log); err != nil {

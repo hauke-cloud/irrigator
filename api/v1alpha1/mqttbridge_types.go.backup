@@ -48,15 +48,28 @@ type MQTTBridgeSpec struct {
 
 	// TopicPrefix is the base topic to subscribe to for device discovery
 	// For Zigbee2MQTT, this is typically "zigbee2mqtt"
-	// For Tasmota with multiple topics, use Topics field instead
+	// For Tasmota with multiple topics, use StateTopics and SensorTopics instead
 	// +optional
 	TopicPrefix string `json:"topicPrefix,omitempty"`
 
 	// Topics is a list of topic subscriptions with their types
 	// Use this for advanced configurations like Tasmota with multiple topic types
 	// If specified, TopicPrefix is ignored
+	// Deprecated: Use StateTopics and SensorTopics instead for better separation of concerns
 	// +optional
 	Topics []TopicSubscription `json:"topics,omitempty"`
+
+	// StateTopics contains topics for device state and control messages
+	// These are used by mqtt-device-manager for device management and control
+	// Examples: stat/+/RESULT, tele/+/STATE, tele/+/INFO1
+	// +optional
+	StateTopics []TopicSubscription `json:"stateTopics,omitempty"`
+
+	// SensorTopics contains topics for sensor data and telemetry
+	// These are used by mqtt-sensor-exporter for metrics collection
+	// Examples: tele/+/SENSOR
+	// +optional
+	SensorTopics []TopicSubscription `json:"sensorTopics,omitempty"`
 
 	// DeviceType specifies the MQTT device ecosystem
 	// Supported types: "zigbee2mqtt", "tasmota", "generic"

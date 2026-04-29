@@ -43,6 +43,21 @@ spec:
           {{- if not .Values.operator.installCRDs }}
           - --install-crds=false
           {{- end }}
+          {{- if .Values.sensorExporterAPI.url }}
+          - --alerts-api-url={{ .Values.sensorExporterAPI.url }}
+          {{- end }}
+          {{- if .Values.sensorExporterAPI.certPath }}
+          - --alerts-cert-path={{ .Values.sensorExporterAPI.certPath }}
+          {{- end }}
+          {{- if .Values.sensorExporterAPI.certFile }}
+          - --alerts-cert-name={{ .Values.sensorExporterAPI.certFile }}
+          {{- end }}
+          {{- if .Values.sensorExporterAPI.keyFile }}
+          - --alerts-cert-key={{ .Values.sensorExporterAPI.keyFile }}
+          {{- end }}
+          {{- if .Values.sensorExporterAPI.caFile }}
+          - --alerts-ca-name={{ .Values.sensorExporterAPI.caFile }}
+          {{- end }}
         ports:
         {{- if .Values.operator.metrics.enabled }}
         - containerPort: {{ .Values.operator.metrics.port }}
@@ -68,11 +83,24 @@ spec:
           periodSeconds: 10
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.sensorExporterAPI.secretName }}
+        volumeMounts:
+        - name: sensor-exporter-certs
+          mountPath: {{ .Values.sensorExporterAPI.certPath }}
+          readOnly: true
+        {{- end }}
         env:
         - name: LOG_LEVEL
           value: {{ .Values.logging.level | quote }}
         - name: LOG_FORMAT
           value: {{ .Values.logging.format | quote }}
+      {{- if .Values.sensorExporterAPI.secretName }}
+      volumes:
+      - name: sensor-exporter-certs
+        secret:
+          secretName: {{ .Values.sensorExporterAPI.secretName }}
+          defaultMode: 0400
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
