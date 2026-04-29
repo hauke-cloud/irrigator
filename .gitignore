@@ -318,18 +318,5 @@ Desktop.ini
 *.tmp
 *.temp
 
-# GitHub Actions
-release_notes.md
-
-# Helm packaging
-deployments/helm/**/charts/
-deployments/helm/**/Chart.lock
-
-# Coverage reports
-cover.out
-coverage.txt
-*.coverprofile
-
 # End of .gitignore
 
-cmd/crd/
