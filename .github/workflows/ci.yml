@@ -55,6 +55,7 @@ jobs:
             echo "Generating CRDs and manifests..."
             make generate
             make manifests
+            make setup-envtest
 
           # Build Arguments
           build-args: |

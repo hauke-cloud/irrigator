@@ -50,7 +50,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet ## Run tests.
+test: manifests generate fmt vet setup-envtest ## Run tests.
 	go test ./... -coverprofile cover.out
 
 ##@ Build
@@ -102,6 +102,7 @@ $(LOCALBIN):
 
 ## Tool Binaries
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
+ENVTEST ?= $(LOCALBIN)/setup-envtest
 
 ## Tool Versions
 CONTROLLER_TOOLS_VERSION ?= v0.20.1
@@ -110,3 +111,12 @@ CONTROLLER_TOOLS_VERSION ?= v0.20.1
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
 	test -s $(LOCALBIN)/controller-gen || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_TOOLS_VERSION)
+
+.PHONY: envtest
+envtest: $(ENVTEST) ## Download setup-envtest locally if necessary.
+$(ENVTEST): $(LOCALBIN)
+	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+
+.PHONY: setup-envtest
+setup-envtest: envtest ## Download and setup envtest binaries.
+	$(ENVTEST) use -p path --bin-dir $(shell pwd)/bin/k8s
