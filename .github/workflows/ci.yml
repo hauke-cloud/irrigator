@@ -39,7 +39,7 @@ jobs:
           # Helm
           enable-helm: "true"
           helm-chart-path: "./deployments/helm"
-          helm-chart-name: "mqtt-device-manager"
+          helm-chart-name: "irrigator"
 
           # Testing
           run-tests: "true"
