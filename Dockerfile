@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.25 AS builder
+FROM golang:1.26 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
@@ -16,7 +16,7 @@ COPY . .
 
 # Copy CRD base files to cmd/crd for embedding
 RUN mkdir -p cmd/crd && \
-    cp config/crd/bases/*.yaml cmd/crd/ 2>/dev/null || true
+  cp config/crd/bases/*.yaml cmd/crd/ 2>/dev/null || true
 
 # Build
 # the GOARCH has no default value to allow the binary to be built according to the host where the command
