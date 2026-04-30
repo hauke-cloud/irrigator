@@ -24,10 +24,12 @@ A Kubernetes operator that manages automated irrigation schedules for Tasmota-co
 
 ## Architecture
 
-The operator watches three types of resources:
-- **MQTTBridge** (read-only): Manages MQTT broker connections to Tasmota bridges
-- **Device** (read-only): Represents Zigbee/MQTT devices discovered through Tasmota
-- **Schedule** (managed): Manages irrigation schedules for valve devices
+The operator manages Schedule resources and reads Device and MQTTBridge resources from the shared IoT API:
+- **MQTTBridge** (read-only, from [kubernetes-iot-api](https://github.com/hauke-cloud/kubernetes-iot-api)): MQTT broker connections to Tasmota bridges
+- **Device** (read-only, from [kubernetes-iot-api](https://github.com/hauke-cloud/kubernetes-iot-api)): Zigbee/MQTT devices discovered through Tasmota
+- **Schedule** (managed, from [kubernetes-iot-api](https://github.com/hauke-cloud/kubernetes-iot-api)): Irrigation schedules for valve devices
+
+All CRDs are defined in the `iot.hauke.cloud/v1alpha1` API group and maintained in the [kubernetes-iot-api](https://github.com/hauke-cloud/kubernetes-iot-api) repository.
 
 ### Custom Resources
 
@@ -84,13 +86,14 @@ Represents a Zigbee valve device connected through Tasmota. Managed by an extern
 - MQTT broker (e.g., Mosquitto)
 - Tasmota bridge with Zigbee coordinator
 - Valve devices with `sensorType: valve`
-- MQTTBridge and Device CRDs installed (managed by external device management controller)
+- IoT API CRDs installed from [kubernetes-iot-api](https://github.com/hauke-cloud/kubernetes-iot-api) (MQTTBridge, Device, Schedule)
 
 ### Installation
 
 **Prerequisites:**
-- MQTTBridge and Device CRDs must be installed by the external device management controller
-- This operator only manages the Schedule CRD
+- IoT API CRDs must be installed from [kubernetes-iot-api](https://github.com/hauke-cloud/kubernetes-iot-api)
+- This operator only manages Schedule resources (reconciliation logic)
+- Device and MQTTBridge resources are managed by other controllers
 
 The operator automatically installs/upgrades the Schedule CRD at startup by default.
 
@@ -108,7 +111,7 @@ make deploy IMG=<your-registry>/irrigator:tag
 The operator will automatically:
 - Install the Schedule CRD if it doesn't exist
 - Upgrade the Schedule CRD if it already exists
-- Read MQTTBridge and Device resources (managed by external controller)
+- Read MQTTBridge and Device resources (managed by other controllers)
 
 **Note:** If you prefer manual CRD installation, you can disable automatic installation:
 ```bash
@@ -116,7 +119,7 @@ The operator will automatically:
 ./bin/manager --install-crds=false
 
 # Or manually install the Schedule CRD
-kubectl apply -f config/crd/bases/mqtt.hauke.cloud_schedules.yaml
+kubectl apply -f config/crd/iot.hauke.cloud_schedules.yaml
 ```
 
 ### Quick Start
@@ -129,7 +132,7 @@ kubectl get devices
 
 Ensure you have a Device CR with `sensorType: valve`. Example:
 ```yaml
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Device
 metadata:
   name: garden-valve-1
@@ -144,7 +147,7 @@ spec:
 2. **Create an irrigation schedule:**
 
 ```yaml
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   name: morning-watering
@@ -228,7 +231,7 @@ Create separate schedules for different zones:
 
 ```yaml
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   name: zone-1-morning
@@ -237,7 +240,7 @@ spec:
   cronExpression: "0 6 * * *"
   durationSeconds: 1800
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   name: zone-2-morning
@@ -338,13 +341,11 @@ kubectl patch schedule morning-watering \
 
 ```
 .
-├── api/v1alpha1/          # CRD definitions
-│   ├── mqttbridge_types.go
-│   ├── device_types.go
-│   └── schedule_types.go
+├── cmd/                   # Main entry point
 ├── internal/
 │   ├── controller/        # Reconciliation logic
-│   │   └── schedule_controller.go
+│   │   ├── schedule_controller.go
+│   │   └── conditions.go
 │   ├── mqtt/             # MQTT client management
 │   │   └── manager.go
 │   └── tasmota/          # Tasmota valve control
@@ -352,9 +353,11 @@ kubectl patch schedule morning-watering \
 ├── config/               # Kubernetes manifests
 │   ├── crd/             # Generated CRDs
 │   ├── rbac/            # RBAC rules
-│   └── samples/         # Example resources
-└── cmd/                 # Main entry point
+│   └── samples/         # Example Schedule resources
+└── deployments/         # Deployment configurations
 ```
+
+**Note:** All CRD type definitions are imported from [kubernetes-iot-api](https://github.com/hauke-cloud/kubernetes-iot-api). This repository only contains the Schedule reconciliation logic.
 
 ### Building
 

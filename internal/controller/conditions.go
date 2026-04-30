@@ -24,8 +24,8 @@ import (
 	"go.uber.org/zap"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mqttv1alpha1 "github.com/hauke-cloud/irrigator/api/v1alpha1"
 	"github.com/hauke-cloud/irrigator/internal/alerts"
+	iotv1alpha1 "github.com/hauke-cloud/kubernetes-iot-api/api/v1alpha1"
 )
 
 // ConditionEvaluator evaluates execution conditions for schedules
@@ -46,7 +46,7 @@ func NewConditionEvaluator(c client.Client, alertsClient *alerts.Client, log *za
 
 // EvaluateConditions checks if all execution conditions are met
 // Returns (passed bool, message string, error)
-func (ce *ConditionEvaluator) EvaluateConditions(ctx context.Context, schedule *mqttv1alpha1.Schedule) (bool, string, error) {
+func (ce *ConditionEvaluator) EvaluateConditions(ctx context.Context, schedule *iotv1alpha1.Schedule) (bool, string, error) {
 	if len(schedule.Spec.ExecutionConditions) == 0 {
 		return true, "No conditions configured", nil
 	}
@@ -80,7 +80,7 @@ func (ce *ConditionEvaluator) EvaluateConditions(ctx context.Context, schedule *
 }
 
 // evaluateCondition evaluates a single execution condition
-func (ce *ConditionEvaluator) evaluateCondition(ctx context.Context, schedule *mqttv1alpha1.Schedule, condition *mqttv1alpha1.ExecutionCondition, index int) (bool, string, error) {
+func (ce *ConditionEvaluator) evaluateCondition(ctx context.Context, schedule *iotv1alpha1.Schedule, condition *iotv1alpha1.ExecutionCondition, index int) (bool, string, error) {
 	// Validate condition configuration
 	if condition.Alert != nil && (condition.Measurement != "" || condition.Operator != "" || condition.Value != "") {
 		return false, "Alert and Measurement/Operator/Value cannot be used together", fmt.Errorf("invalid condition configuration at index %d", index)
@@ -105,7 +105,7 @@ func (ce *ConditionEvaluator) evaluateCondition(ctx context.Context, schedule *m
 }
 
 // evaluateAlertCondition checks alert status via the alerts API
-func (ce *ConditionEvaluator) evaluateAlertCondition(ctx context.Context, condition *mqttv1alpha1.ExecutionCondition) (bool, string, error) {
+func (ce *ConditionEvaluator) evaluateAlertCondition(ctx context.Context, condition *iotv1alpha1.ExecutionCondition) (bool, string, error) {
 	checkForAlert := *condition.Alert
 
 	// Query alerts API for this sensor type

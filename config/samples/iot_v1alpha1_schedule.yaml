@@ -1,4 +1,4 @@
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   labels:
@@ -24,7 +24,7 @@ spec:
   # Dry-run disabled (actually control the valve)
   dryRun: false
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   labels:
@@ -50,7 +50,7 @@ spec:
   # Dry-run disabled
   dryRun: false
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   labels:
@@ -76,7 +76,7 @@ spec:
   # Dry-run disabled
   dryRun: false
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   labels:
@@ -102,7 +102,7 @@ spec:
   # Dry-run disabled
   dryRun: false
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   labels:

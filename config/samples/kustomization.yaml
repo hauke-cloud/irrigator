@@ -1,6 +1,4 @@
 ## Append samples of your project ##
 resources:
-- mqtt_v1alpha1_mqttbridge.yaml
-- mqtt_v1alpha1_device.yaml
-- mqtt_v1alpha1_schedule.yaml
+- iot_v1alpha1_schedule.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

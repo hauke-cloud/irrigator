@@ -2,8 +2,8 @@
 # since it depends on service name and namespace that are out of this kustomize package.
 # It should be run by config/default
 resources:
-- bases/mqtt.hauke.cloud_mqttbridges.yaml
-- bases/mqtt.hauke.cloud_devices.yaml
+- bases/iot.hauke.cloud_mqttbridges.yaml
+- bases/iot.hauke.cloud_devices.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

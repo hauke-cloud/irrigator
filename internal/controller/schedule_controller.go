@@ -31,8 +31,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mqttv1alpha1 "github.com/hauke-cloud/irrigator/api/v1alpha1"
 	"github.com/hauke-cloud/irrigator/internal/tasmota"
+	iotv1alpha1 "github.com/hauke-cloud/kubernetes-iot-api/api/v1alpha1"
 )
 
 // ScheduleReconciler reconciles a Schedule object
@@ -55,10 +55,10 @@ type ScheduleReconciler struct {
 	mu sync.Mutex
 }
 
-// +kubebuilder:rbac:groups=mqtt.hauke.cloud,resources=schedules,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=mqtt.hauke.cloud,resources=schedules/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=mqtt.hauke.cloud,resources=schedules/finalizers,verbs=update
-// +kubebuilder:rbac:groups=mqtt.hauke.cloud,resources=devices,verbs=get;list;watch
+// +kubebuilder:rbac:groups=iot.hauke.cloud,resources=schedules,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=iot.hauke.cloud,resources=schedules/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=iot.hauke.cloud,resources=schedules/finalizers,verbs=update
+// +kubebuilder:rbac:groups=iot.hauke.cloud,resources=devices,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop
 func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -69,7 +69,7 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	log.Debug("Reconciling Schedule")
 
 	// Fetch the Schedule instance
-	schedule := &mqttv1alpha1.Schedule{}
+	schedule := &iotv1alpha1.Schedule{}
 	err := r.Get(ctx, req.NamespacedName, schedule)
 	if err != nil {
 		if errors.IsNotFound(err) {
@@ -173,7 +173,7 @@ func (r *ScheduleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 }
 
 // updateStatus updates the status subresource, handling conflicts gracefully
-func (r *ScheduleReconciler) updateStatus(ctx context.Context, schedule *mqttv1alpha1.Schedule, log *zap.Logger) error {
+func (r *ScheduleReconciler) updateStatus(ctx context.Context, schedule *iotv1alpha1.Schedule, log *zap.Logger) error {
 	if err := r.Status().Update(ctx, schedule); err != nil {
 		// Conflicts are expected when status is updated from multiple places (e.g., from cron jobs)
 		// The controller will retry automatically
@@ -195,7 +195,7 @@ func (r *ScheduleReconciler) updateGeneration(scheduleUID string, generation int
 }
 
 // ensureJob creates or updates a cron job for the schedule
-func (r *ScheduleReconciler) ensureJob(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, loc *time.Location, log *zap.Logger) error {
+func (r *ScheduleReconciler) ensureJob(ctx context.Context, schedule *iotv1alpha1.Schedule, device *iotv1alpha1.Device, loc *time.Location, log *zap.Logger) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -276,7 +276,7 @@ func (r *ScheduleReconciler) removeJob(scheduleUID string) {
 }
 
 // updateNextRunTime updates the status with next run time from the cron job
-func (r *ScheduleReconciler) updateNextRunTime(schedule *mqttv1alpha1.Schedule, loc *time.Location) error {
+func (r *ScheduleReconciler) updateNextRunTime(schedule *iotv1alpha1.Schedule, loc *time.Location) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -317,7 +317,7 @@ func (r *ScheduleReconciler) updateNextRunTime(schedule *mqttv1alpha1.Schedule, 
 }
 
 // executeScheduledIrrigation is called by the cron job to run irrigation
-func (r *ScheduleReconciler) executeScheduledIrrigation(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, loc *time.Location, log *zap.Logger) {
+func (r *ScheduleReconciler) executeScheduledIrrigation(ctx context.Context, schedule *iotv1alpha1.Schedule, device *iotv1alpha1.Device, loc *time.Location, log *zap.Logger) {
 	log.Info("Executing scheduled irrigation",
 		zap.String("schedule", schedule.Name),
 		zap.String("device", device.Name),
@@ -417,7 +417,7 @@ func (r *ScheduleReconciler) executeScheduledIrrigation(ctx context.Context, sch
 }
 
 // stopScheduledIrrigation stops the irrigation after duration
-func (r *ScheduleReconciler) stopScheduledIrrigation(ctx context.Context, schedule *mqttv1alpha1.Schedule, device *mqttv1alpha1.Device, log *zap.Logger) {
+func (r *ScheduleReconciler) stopScheduledIrrigation(ctx context.Context, schedule *iotv1alpha1.Schedule, device *iotv1alpha1.Device, log *zap.Logger) {
 	log.Info("Stopping scheduled irrigation",
 		zap.String("schedule", schedule.Name),
 		zap.String("device", device.Name),
@@ -452,7 +452,7 @@ func (r *ScheduleReconciler) stopScheduledIrrigation(ctx context.Context, schedu
 }
 
 // findDevice finds a device by one of the supported identifiers
-func (r *ScheduleReconciler) findDevice(ctx context.Context, schedule *mqttv1alpha1.Schedule) (*mqttv1alpha1.Device, error) {
+func (r *ScheduleReconciler) findDevice(ctx context.Context, schedule *iotv1alpha1.Schedule) (*iotv1alpha1.Device, error) {
 	// Count how many identifiers are specified
 	identifierCount := 0
 	if schedule.Spec.DeviceName != "" {
@@ -478,7 +478,7 @@ func (r *ScheduleReconciler) findDevice(ctx context.Context, schedule *mqttv1alp
 
 	// Try to find by device name (CR name)
 	if schedule.Spec.DeviceName != "" {
-		device := &mqttv1alpha1.Device{}
+		device := &iotv1alpha1.Device{}
 		if err := r.Get(ctx, client.ObjectKey{
 			Namespace: schedule.Namespace,
 			Name:      schedule.Spec.DeviceName,
@@ -489,7 +489,7 @@ func (r *ScheduleReconciler) findDevice(ctx context.Context, schedule *mqttv1alp
 	}
 
 	// For other identifiers, we need to list all devices and search
-	deviceList := &mqttv1alpha1.DeviceList{}
+	deviceList := &iotv1alpha1.DeviceList{}
 	if err := r.List(ctx, deviceList, client.InNamespace(schedule.Namespace)); err != nil {
 		return nil, fmt.Errorf("failed to list devices: %w", err)
 	}
@@ -543,7 +543,7 @@ func (r *ScheduleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	r.scheduler.Start()
 
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&mqttv1alpha1.Schedule{}).
+		For(&iotv1alpha1.Schedule{}).
 		Named("schedule").
 		Complete(r)
 }

@@ -23,12 +23,12 @@ import (
 	"go.uber.org/zap"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	mqttv1alpha1 "github.com/hauke-cloud/irrigator/api/v1alpha1"
+	iotv1alpha1 "github.com/hauke-cloud/kubernetes-iot-api/api/v1alpha1"
 )
 
 // BridgeConnector defines an interface for connecting to MQTT bridges
 type BridgeConnector interface {
-	Connect(ctx context.Context, bridge *mqttv1alpha1.MQTTBridge) error
+	Connect(ctx context.Context, bridge *iotv1alpha1.MQTTBridge) error
 }
 
 // ValveController manages valve operations via Tasmota MQTT commands
@@ -52,17 +52,17 @@ func NewValveController(c client.Client, log *zap.Logger, mqttPublisher MQTTPubl
 }
 
 // TurnOn turns on a valve device
-func (v *ValveController) TurnOn(ctx context.Context, device *mqttv1alpha1.Device) error {
+func (v *ValveController) TurnOn(ctx context.Context, device *iotv1alpha1.Device) error {
 	return v.setPowerState(ctx, device, "1", "ON")
 }
 
 // TurnOff turns off a valve device
-func (v *ValveController) TurnOff(ctx context.Context, device *mqttv1alpha1.Device) error {
+func (v *ValveController) TurnOff(ctx context.Context, device *iotv1alpha1.Device) error {
 	return v.setPowerState(ctx, device, "0", "OFF")
 }
 
 // setPowerState sets the power state of a valve
-func (v *ValveController) setPowerState(ctx context.Context, device *mqttv1alpha1.Device, powerValue, state string) error {
+func (v *ValveController) setPowerState(ctx context.Context, device *iotv1alpha1.Device, powerValue, state string) error {
 	// Validate device has required fields
 	if device.Spec.IEEEAddr == "" {
 		return fmt.Errorf("device %s has no IEEE address", device.Name)
@@ -76,7 +76,7 @@ func (v *ValveController) setPowerState(ctx context.Context, device *mqttv1alpha
 	bridgeName := device.Spec.BridgeRef.Name
 
 	// Fetch the bridge to verify it exists and is Tasmota
-	bridge := &mqttv1alpha1.MQTTBridge{}
+	bridge := &iotv1alpha1.MQTTBridge{}
 	if err := v.client.Get(ctx, client.ObjectKey{
 		Namespace: bridgeNamespace,
 		Name:      bridgeName,

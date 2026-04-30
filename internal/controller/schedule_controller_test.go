@@ -31,9 +31,9 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	mqttv1alpha1 "github.com/hauke-cloud/irrigator/api/v1alpha1"
 	"github.com/hauke-cloud/irrigator/internal/mqtt"
 	"github.com/hauke-cloud/irrigator/internal/tasmota"
+	iotv1alpha1 "github.com/hauke-cloud/kubernetes-iot-api/api/v1alpha1"
 )
 
 var _ = Describe("Schedule Controller", func() {
@@ -50,19 +50,19 @@ var _ = Describe("Schedule Controller", func() {
 
 		BeforeEach(func() {
 			By("creating a test device")
-			device := &mqttv1alpha1.Device{
+			device := &iotv1alpha1.Device{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      deviceName,
 					Namespace: "default",
 				},
-				Spec: mqttv1alpha1.DeviceSpec{
-					BridgeRef: mqttv1alpha1.BridgeReference{
+				Spec: iotv1alpha1.DeviceSpec{
+					BridgeRef: iotv1alpha1.BridgeReference{
 						Name: "test-bridge",
 					},
 					IEEEAddr:   "0x00158D00012345678",
 					SensorType: "valve",
 				},
-				Status: mqttv1alpha1.DeviceStatus{
+				Status: iotv1alpha1.DeviceStatus{
 					ShortAddr: "0x1234",
 				},
 			}
@@ -72,15 +72,15 @@ var _ = Describe("Schedule Controller", func() {
 			}
 
 			By("creating the custom resource for the Kind Schedule")
-			schedule := &mqttv1alpha1.Schedule{}
+			schedule := &iotv1alpha1.Schedule{}
 			err = k8sClient.Get(ctx, typeNamespacedName, schedule)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &mqttv1alpha1.Schedule{
+				resource := &iotv1alpha1.Schedule{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
 					},
-					Spec: mqttv1alpha1.ScheduleSpec{
+					Spec: iotv1alpha1.ScheduleSpec{
 						DeviceName:      deviceName,
 						CronExpression:  "0 6 * * *",
 						DurationSeconds: 900,
@@ -94,14 +94,14 @@ var _ = Describe("Schedule Controller", func() {
 
 		AfterEach(func() {
 			By("Cleanup the schedule resource")
-			resource := &mqttv1alpha1.Schedule{}
+			resource := &iotv1alpha1.Schedule{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 			}
 
 			By("Cleanup the device resource")
-			device := &mqttv1alpha1.Device{}
+			device := &iotv1alpha1.Device{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: deviceName, Namespace: "default"}, device)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, device)).To(Succeed())

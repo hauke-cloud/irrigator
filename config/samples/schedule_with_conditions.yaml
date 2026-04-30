@@ -1,4 +1,4 @@
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   name: morning-watering-with-conditions
@@ -39,7 +39,7 @@ spec:
       message: "Temperature too low for irrigation (below 10°C)"
 
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   name: evening-watering-simple
@@ -57,7 +57,7 @@ spec:
       alert: false
 
 ---
-apiVersion: mqtt.hauke.cloud/v1alpha1
+apiVersion: iot.hauke.cloud/v1alpha1
 kind: Schedule
 metadata:
   name: battery-check-example
