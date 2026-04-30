@@ -12,3 +12,4 @@
 
 # Re-include CRD YAML files needed for embedding
 !config/crd/bases/*.yaml
+!cmd/crds/*.yaml
