@@ -119,4 +119,4 @@ $(ENVTEST): $(LOCALBIN)
 
 .PHONY: setup-envtest
 setup-envtest: envtest ## Download and setup envtest binaries.
-	$(ENVTEST) use -p path --bin-dir $(shell pwd)/bin/k8s
+	$(ENVTEST) use -p path --bin-dir $(shell pwd)/bin
