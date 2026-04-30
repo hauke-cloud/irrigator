@@ -99,7 +99,7 @@ spec:
       - name: sensor-exporter-certs
         secret:
           secretName: {{ .Values.sensorExporterAPI.secretName }}
-          defaultMode: 0400
+          defaultMode: 0444
       {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
