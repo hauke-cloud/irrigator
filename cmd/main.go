@@ -219,9 +219,10 @@ func main() {
 	valveController := tasmota.NewValveController(
 		mgr.GetClient(),
 		zapLog.With(uberzap.String("component", "valve")),
-		mqttManager, // MQTT publisher
-		mqttManager, // Bridge connector (same interface)
-		false,       // dry-run disabled by default, schedules control this
+		mqttManager,                        // MQTT publisher
+		mqttManager,                        // Bridge connector (same interface)
+		false,                              // dry-run disabled by default, schedules control this
+		mqttManager.GetConfirmationRegistry(), // shared registry for ZbReceived confirmations
 	)
 	setupLog.Info("Created Valve Controller")
 

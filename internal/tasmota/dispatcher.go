@@ -37,8 +37,9 @@ type Dispatcher struct {
 	mqttPublisher MQTTPublisher
 }
 
-// NewDispatcher creates a new Tasmota message dispatcher
-func NewDispatcher(c client.Client, log *zap.Logger, mqttPublisher MQTTPublisher) *Dispatcher {
+// NewDispatcher creates a new Tasmota message dispatcher and registers the
+// telemetry handler so that ZbReceived messages can resolve valve confirmations.
+func NewDispatcher(c client.Client, log *zap.Logger, mqttPublisher MQTTPublisher, registry *ConfirmationRegistry) *Dispatcher {
 	d := &Dispatcher{
 		client:        c,
 		log:           log.With(zap.String("component", "tasmota-dispatcher")),
@@ -46,8 +47,11 @@ func NewDispatcher(c client.Client, log *zap.Logger, mqttPublisher MQTTPublisher
 		mqttPublisher: mqttPublisher,
 	}
 
-	// No handlers registered - we only send commands, not process telemetry
-	// Telemetry is handled by the external device management controller
+	// Register the telemetry handler so incoming ZbReceived messages can
+	// confirm (or refute) valve state changes.
+	// The MQTTBridge CR must subscribe to tele/<tasmotaBridgeName>/SENSOR
+	// with type "telemetry" for this handler to be invoked.
+	d.RegisterHandler("telemetry", NewTelemetryHandler(log, registry))
 
 	return d
 }

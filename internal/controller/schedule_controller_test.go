@@ -112,7 +112,7 @@ var _ = Describe("Schedule Controller", func() {
 			By("Reconciling the created resource")
 			testLogger, _ := zap.NewDevelopment()
 			mqttManager := mqtt.NewBridgeManager(k8sClient, testLogger)
-			valveController := tasmota.NewValveController(k8sClient, testLogger, mqttManager, mqttManager, true) // dry-run for tests
+			valveController := tasmota.NewValveController(k8sClient, testLogger, mqttManager, mqttManager, true, mqttManager.GetConfirmationRegistry()) // dry-run for tests
 
 			controllerReconciler := &ScheduleReconciler{
 				Client:          k8sClient,

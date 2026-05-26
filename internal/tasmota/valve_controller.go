@@ -19,11 +19,18 @@ package tasmota
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.uber.org/zap"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	iotv1alpha1 "github.com/hauke-cloud/kubernetes-iot-api/api/v1alpha1"
+)
+
+const (
+	confirmTimeout = 10 * time.Second
+	retryDelay     = 2 * time.Second
+	maxRetries     = 3
 )
 
 // BridgeConnector defines an interface for connecting to MQTT bridges
@@ -37,16 +44,22 @@ type ValveController struct {
 	log             *zap.Logger
 	mqttPublisher   MQTTPublisher
 	bridgeConnector BridgeConnector
+	confirmRegistry *ConfirmationRegistry
 	dryRun          bool
 }
 
-// NewValveController creates a new valve controller
-func NewValveController(c client.Client, log *zap.Logger, mqttPublisher MQTTPublisher, bridgeConnector BridgeConnector, dryRun bool) *ValveController {
+// NewValveController creates a new valve controller.
+// confirmRegistry may be nil, in which case commands are fire-and-forget with
+// no state verification. When non-nil the controller waits for a ZbReceived
+// telemetry confirmation and retries up to maxRetries times on mismatch or
+// timeout.
+func NewValveController(c client.Client, log *zap.Logger, mqttPublisher MQTTPublisher, bridgeConnector BridgeConnector, dryRun bool, confirmRegistry *ConfirmationRegistry) *ValveController {
 	return &ValveController{
 		client:          c,
 		log:             log.With(zap.String("component", "valve-controller")),
 		mqttPublisher:   mqttPublisher,
 		bridgeConnector: bridgeConnector,
+		confirmRegistry: confirmRegistry,
 		dryRun:          dryRun,
 	}
 }
@@ -61,7 +74,9 @@ func (v *ValveController) TurnOff(ctx context.Context, device *iotv1alpha1.Devic
 	return v.setPowerState(ctx, device, "0", "OFF")
 }
 
-// setPowerState sets the power state of a valve
+// setPowerState sets the power state of a valve and, when a ConfirmationRegistry
+// is configured, waits for a ZbReceived telemetry message to verify the state
+// change. It retries up to maxRetries times on timeout or mismatch.
 func (v *ValveController) setPowerState(ctx context.Context, device *iotv1alpha1.Device, powerValue, state string) error {
 	// Validate device has required fields
 	if device.Spec.IEEEAddr == "" {
@@ -109,28 +124,83 @@ func (v *ValveController) setPowerState(ctx context.Context, device *iotv1alpha1
 	)
 
 	if v.dryRun {
-		// Dry-run mode: Just log what would be done
 		log.Info("DRY-RUN: Would send valve command",
 			zap.String("topic", fmt.Sprintf("cmnd/%s/ZbSend", bridge.Spec.BridgeName)),
 			zap.String("payload", payload))
 		return nil
 	}
 
-	// Send the MQTT command
-	log.Info("Sending valve command",
-		zap.String("payload", payload))
-
-	if err := v.mqttPublisher.PublishTasmotaCommand(
-		bridgeNamespace,
-		bridgeName,
-		"ZbSend",
-		payload,
-	); err != nil {
-		return fmt.Errorf("failed to publish valve %s command: %w", state, err)
+	expectedPower := 0
+	if powerValue == "1" {
+		expectedPower = 1
 	}
 
-	log.Info("Valve command sent successfully")
-	return nil
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		if attempt > 1 {
+			log.Info("Retrying valve command",
+				zap.Int("attempt", attempt),
+				zap.Int("maxRetries", maxRetries))
+			select {
+			case <-time.After(retryDelay):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		// Register confirmation before publishing to avoid a race where the
+		// telemetry arrives before we start listening.
+		var confirmCh <-chan ConfirmationResult
+		if v.confirmRegistry != nil {
+			confirmCh = v.confirmRegistry.Register(device.Spec.IEEEAddr, expectedPower)
+		}
+
+		log.Info("Sending valve command",
+			zap.String("payload", payload),
+			zap.Int("attempt", attempt))
+
+		if err := v.mqttPublisher.PublishTasmotaCommand(
+			bridgeNamespace,
+			bridgeName,
+			"ZbSend",
+			payload,
+		); err != nil {
+			if v.confirmRegistry != nil {
+				v.confirmRegistry.Deregister(device.Spec.IEEEAddr)
+			}
+			return fmt.Errorf("failed to publish valve %s command: %w", state, err)
+		}
+
+		// No registry configured: fire-and-forget, same as before.
+		if confirmCh == nil {
+			log.Info("Valve command sent successfully (no confirmation)")
+			return nil
+		}
+
+		// Wait for the ZbReceived telemetry to confirm the actual device state.
+		select {
+		case result := <-confirmCh:
+			if result.Confirmed {
+				log.Info("Valve state confirmed",
+					zap.String("state", state),
+					zap.Int("attempt", attempt))
+				return nil
+			}
+			log.Warn("Valve state mismatch — will retry",
+				zap.Int("attempt", attempt),
+				zap.Int("expected", expectedPower),
+				zap.Int("actual", result.ActualPower))
+		case <-time.After(confirmTimeout):
+			v.confirmRegistry.Deregister(device.Spec.IEEEAddr)
+			log.Warn("Valve state confirmation timed out — will retry",
+				zap.Int("attempt", attempt),
+				zap.Duration("timeout", confirmTimeout))
+		case <-ctx.Done():
+			v.confirmRegistry.Deregister(device.Spec.IEEEAddr)
+			return ctx.Err()
+		}
+	}
+
+	return fmt.Errorf("valve %s: failed to confirm state %q after %d attempts", device.Name, state, maxRetries)
 }
 
 // SetDryRun enables or disables dry-run mode

@@ -47,6 +47,7 @@ type BridgeManager struct {
 	bridges           map[string]*BridgeConnection
 	mu                sync.RWMutex
 	tasmotaDispatcher *tasmota.Dispatcher
+	confirmRegistry   *tasmota.ConfirmationRegistry
 }
 
 // BridgeConnection represents a single MQTT bridge connection
@@ -61,13 +62,22 @@ type BridgeConnection struct {
 // NewBridgeManager creates a new MQTT bridge manager
 func NewBridgeManager(c client.Client, log *zap.Logger) *BridgeManager {
 	m := &BridgeManager{
-		client:  c,
-		log:     log,
-		bridges: make(map[string]*BridgeConnection),
+		client:          c,
+		log:             log,
+		bridges:         make(map[string]*BridgeConnection),
+		confirmRegistry: tasmota.NewConfirmationRegistry(),
 	}
-	// Create dispatcher with self as MQTT publisher
-	m.tasmotaDispatcher = tasmota.NewDispatcher(c, log.With(zap.String("component", "tasmota")), m)
+	// Create dispatcher with self as MQTT publisher; share the registry so the
+	// telemetry handler can resolve pending valve confirmations.
+	m.tasmotaDispatcher = tasmota.NewDispatcher(c, log.With(zap.String("component", "tasmota")), m, m.confirmRegistry)
 	return m
+}
+
+// GetConfirmationRegistry returns the shared ConfirmationRegistry used by the
+// TelemetryHandler. Pass this to NewValveController so commands and
+// confirmations share the same registry.
+func (m *BridgeManager) GetConfirmationRegistry() *tasmota.ConfirmationRegistry {
+	return m.confirmRegistry
 }
 
 // Connect establishes connection to an MQTT bridge
