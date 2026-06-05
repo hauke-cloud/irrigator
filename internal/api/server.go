@@ -29,20 +29,19 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Config holds all configuration for the API server.
 type Config struct {
-	Addr         string
-	TLSCertFile  string
-	TLSKeyFile   string
-	ClientCAFile string
-	K8sClient    client.Client
-	Executor     Executor
-	Log          *slog.Logger
+	Addr             string
+	TLSCertFile      string
+	TLSKeyFile       string
+	ClientCAFile     string
+	DefaultNamespace string
+	K8sClient        client.Client
+	Executor         Executor
+	Log              *slog.Logger
 }
 
 // Server is the irrigator REST API server.
@@ -77,29 +76,13 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 
 	h := &handler{
-		k8s:      cfg.K8sClient,
-		executor: cfg.Executor,
-		log:      cfg.Log,
+		k8s:              cfg.K8sClient,
+		executor:         cfg.Executor,
+		defaultNamespace: cfg.DefaultNamespace,
+		log:              cfg.Log,
 	}
 
-	r := chi.NewRouter()
-	r.Use(chimiddleware.RequestID)
-	r.Use(chimiddleware.RealIP)
-	r.Use(chimiddleware.Logger)
-	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.Timeout(30 * time.Second))
-
-	r.Get("/api/v1/healthz", h.healthz)
-	r.Get("/api/v1/readyz", h.readyz)
-
-	r.Group(func(r chi.Router) {
-		r.Use(requireClientCert)
-		r.Get("/api/v1/schedules", h.listSchedules)
-		r.Get("/api/v1/schedules/{name}", h.getSchedule)
-		r.Put("/api/v1/schedules/{name}/execute", h.executeSchedule)
-	})
-
-	return &Server{cfg: cfg, router: r, tls: tlsCfg}, nil
+	return &Server{cfg: cfg, router: newRouter(h), tls: tlsCfg}, nil
 }
 
 // Start listens on the configured address until ctx is cancelled.

@@ -35,15 +35,16 @@ type Executor interface {
 }
 
 type handler struct {
-	k8s      client.Client
-	executor Executor
-	log      *slog.Logger
+	k8s              client.Client
+	executor         Executor
+	defaultNamespace string
+	log              *slog.Logger
 }
 
 // listSchedules returns all IrrigationSchedule objects the controller can see,
 // optionally filtered by the ?namespace= query parameter.
 func (h *handler) listSchedules(w http.ResponseWriter, r *http.Request) {
-	ns := namespaceFrom(r)
+	ns := h.namespaceFrom(r)
 	limit, offset := parsePagination(r)
 
 	var list irrigatorv1alpha1.IrrigationScheduleList
@@ -80,7 +81,7 @@ func (h *handler) listSchedules(w http.ResponseWriter, r *http.Request) {
 // getSchedule returns a single IrrigationSchedule by name (and optional namespace).
 func (h *handler) getSchedule(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	ns := namespaceFrom(r)
+	ns := h.namespaceFrom(r)
 
 	var schedule irrigatorv1alpha1.IrrigationSchedule
 	if err := h.k8s.Get(r.Context(), types.NamespacedName{Name: name, Namespace: ns}, &schedule); err != nil {
@@ -94,7 +95,7 @@ func (h *handler) getSchedule(w http.ResponseWriter, r *http.Request) {
 // bypassing the cron timer.
 func (h *handler) executeSchedule(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
-	ns := namespaceFrom(r)
+	ns := h.namespaceFrom(r)
 
 	key := types.NamespacedName{Name: name, Namespace: ns}
 
@@ -132,11 +133,14 @@ func (h *handler) readyz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func namespaceFrom(r *http.Request) string {
+func (h *handler) namespaceFrom(r *http.Request) string {
 	if ns := r.URL.Query().Get("namespace"); ns != "" {
 		return ns
 	}
-	return r.Header.Get("X-Namespace")
+	if ns := r.Header.Get("X-Namespace"); ns != "" {
+		return ns
+	}
+	return h.defaultNamespace
 }
 
 func clientCN(r *http.Request) string {

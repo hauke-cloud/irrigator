@@ -46,6 +46,11 @@ spec:
         - --valve-client-cert=/valve-client-tls/tls.crt
         - --valve-client-key=/valve-client-tls/tls.key
         - --valve-server-ca=/valve-server-ca/ca.crt
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         ports:
         - containerPort: {{ .Values.ports.api }}
           name: api

@@ -51,6 +51,7 @@ func main() {
 		apiAddr          string
 		probeAddr        string
 		metricsAddr      string
+		defaultNamespace string
 		leaderElection   bool
 		leaderElectionNS string
 		valveURL         string
@@ -65,6 +66,7 @@ func main() {
 	flag.StringVar(&apiAddr, "api-addr", ":8443", "REST API listen address")
 	flag.StringVar(&probeAddr, "probe-addr", ":8081", "health probe listen address")
 	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "Prometheus metrics listen address")
+	flag.StringVar(&defaultNamespace, "default-namespace", "", "default namespace used when requests omit ?namespace= (falls back to POD_NAMESPACE env var)")
 	flag.BoolVar(&leaderElection, "leader-election", true, "enable leader election")
 	flag.StringVar(&leaderElectionNS, "leader-election-namespace", "", "namespace for leader election lock (defaults to in-cluster namespace)")
 	flag.StringVar(&valveURL, "valve-controller-url", "https://valve-controller.mqtt.svc.cluster.local:8443", "valve-controller base URL")
@@ -75,6 +77,10 @@ func main() {
 	flag.StringVar(&valveClientKey, "valve-client-key", "/valve-client-tls/tls.key", "client key for the valve-controller API")
 	flag.StringVar(&valveServerCA, "valve-server-ca", "/valve-server-ca/ca.crt", "CA certificate of the valve-controller server")
 	flag.Parse()
+
+	if defaultNamespace == "" {
+		defaultNamespace = os.Getenv("POD_NAMESPACE")
+	}
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	ctrl.SetLogger(newLogrAdapter(log))
@@ -128,13 +134,14 @@ func main() {
 	}
 
 	apiServer, err := api.NewServer(api.Config{
-		Addr:         apiAddr,
-		TLSCertFile:  tlsCert,
-		TLSKeyFile:   tlsKey,
-		ClientCAFile: clientCA,
-		K8sClient:    mgr.GetClient(),
-		Executor:     exec,
-		Log:          log.With("component", "api"),
+		Addr:             apiAddr,
+		TLSCertFile:      tlsCert,
+		TLSKeyFile:       tlsKey,
+		ClientCAFile:     clientCA,
+		DefaultNamespace: defaultNamespace,
+		K8sClient:        mgr.GetClient(),
+		Executor:         exec,
+		Log:              log.With("component", "api"),
 	})
 	if err != nil {
 		log.Error("create API server", "error", err)
