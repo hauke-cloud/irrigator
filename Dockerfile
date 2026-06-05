@@ -12,5 +12,5 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -o irrigator ./cmd/controller/
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /app/irrigator .
-USER nonroot:nonroot
+USER 65532:65532
 ENTRYPOINT ["/irrigator"]

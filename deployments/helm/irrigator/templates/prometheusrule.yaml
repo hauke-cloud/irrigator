@@ -1,0 +1,72 @@
+{{- if .Values.prometheusRules.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "irrigator.fullname" . }}
+  namespace: {{ .Values.prometheusRules.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "irrigator.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRules.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: irrigator.schedules
+      interval: 30s
+      rules:
+        # --- Recording rules ---
+        - record: irrigator:schedule_execution_failure_rate5m
+          expr: rate(irrigator_schedule_executions_total{result="failed"}[5m])
+
+        - record: irrigator:schedule_valve_error_rate5m
+          expr: rate(irrigator_schedule_valve_errors_total[5m])
+
+        # --- Alerting rules ---
+        - alert: IrrigatorScheduleExecutionFailed
+          expr: rate(irrigator_schedule_executions_total{result="failed"}[15m]) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Irrigation schedule {{ "{{" }} $labels.schedule {{ "}}" }} is failing"
+            description: |
+              Schedule {{ "{{" }} $labels.schedule {{ "}}" }} in namespace {{ "{{" }} $labels.namespace {{ "}}" }}
+              targeting valve {{ "{{" }} $labels.valve {{ "}}" }} has been failing to execute.
+              Check the valve-controller logs and verify the valve is reachable.
+
+        - alert: IrrigatorValveCommandErrors
+          expr: rate(irrigator_schedule_valve_errors_total[15m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Valve command errors for schedule {{ "{{" }} $labels.schedule {{ "}}" }}"
+            description: |
+              The irrigator cannot open valve {{ "{{" }} $labels.valve {{ "}}" }} for schedule
+              {{ "{{" }} $labels.schedule {{ "}}" }} in namespace {{ "{{" }} $labels.namespace {{ "}}" }}.
+              The valve-controller API may be unreachable or the valve is disabled.
+
+        - alert: IrrigatorReconcileErrors
+          expr: rate(irrigator_reconcile_errors_total[5m]) > 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "IrrigationSchedule reconcile errors for {{ "{{" }} $labels.schedule {{ "}}" }}"
+            description: |
+              The irrigator controller is failing to reconcile schedule {{ "{{" }} $labels.schedule {{ "}}" }}
+              in namespace {{ "{{" }} $labels.namespace {{ "}}" }}.
+              This usually means an invalid cron expression — check the resource events.
+
+        - alert: IrrigatorScheduleMissed
+          expr: time() - irrigator_schedule_last_execution_timestamp_seconds > 90000
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Irrigation schedule {{ "{{" }} $labels.schedule {{ "}}" }} has not run in 25 h"
+            description: |
+              Schedule {{ "{{" }} $labels.schedule {{ "}}" }} in namespace {{ "{{" }} $labels.namespace {{ "}}" }}
+              targeting valve {{ "{{" }} $labels.valve {{ "}}" }} has not executed in over 25 hours.
+              Verify the schedule is enabled and the cron expression is correct.
+{{- end }}
