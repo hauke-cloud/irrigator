@@ -1,0 +1,163 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.0
+  name: irrigationschedules.iot.hauke.cloud
+spec:
+  group: iot.hauke.cloud
+  names:
+    kind: IrrigationSchedule
+    listKind: IrrigationScheduleList
+    plural: irrigationschedules
+    shortNames:
+    - irrsched
+    singular: irrigationschedule
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.valveRef.name
+      name: Valve
+      type: string
+    - jsonPath: .spec.cronExpression
+      name: Schedule
+      type: string
+    - jsonPath: .spec.enabled
+      name: Enabled
+      type: boolean
+    - jsonPath: .status.lastExecutionTime
+      name: Last Run
+      type: date
+    - jsonPath: .status.nextExecutionTime
+      name: Next Run
+      type: date
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            type: string
+          kind:
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              cronExpression:
+                description: Standard 5-field cron expression (minute hour dom month dow).
+                minLength: 1
+                type: string
+              dryRun:
+                default: false
+                description: When true the controller logs the action but does not open the valve.
+                type: boolean
+              durationSeconds:
+                description: How long in seconds to hold the valve open per execution.
+                format: int32
+                maximum: 86400
+                minimum: 1
+                type: integer
+              enabled:
+                default: true
+                description: When false the cron entry is removed and no executions occur.
+                type: boolean
+              timeZone:
+                default: Europe/Berlin
+                description: IANA timezone name for interpreting the cron expression.
+                type: string
+              valveRef:
+                description: Reference to the MQTTValve resource to control.
+                properties:
+                  name:
+                    description: Name of the MQTTValve CR.
+                    minLength: 1
+                    type: string
+                  namespace:
+                    description: Namespace of the MQTTValve CR. Defaults to the schedule's own namespace.
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - cronExpression
+            - durationSeconds
+            - valveRef
+            type: object
+          status:
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current state.
+                  properties:
+                    lastTransitionTime:
+                      format: date-time
+                      type: string
+                    message:
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              executionCount:
+                description: Total number of executions since the schedule was created.
+                format: int64
+                minimum: 0
+                type: integer
+              lastExecutionResult:
+                description: Result of the most recent execution.
+                enum:
+                - success
+                - failed
+                - dry-run
+                type: string
+              lastExecutionTime:
+                description: Timestamp of the most recent execution.
+                format: date-time
+                type: string
+              nextExecutionTime:
+                description: Timestamp of the next scheduled execution.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: Generation of the spec that was last reconciled.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

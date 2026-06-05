@@ -1,0 +1,14 @@
+apiVersion: iot.hauke.cloud/v1alpha1
+kind: IrrigationSchedule
+metadata:
+  name: valve-center-morning
+  namespace: iot
+spec:
+  cronExpression: "5 8,14,20 * * *"
+  valveRef:
+    name: valve-center
+    namespace: iot
+  durationSeconds: 600
+  enabled: true
+  dryRun: false
+  timeZone: Europe/Berlin

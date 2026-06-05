@@ -2,105 +2,92 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "irrigator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "irrigator.labels" . | nindent 4 }}
-    control-plane: controller-manager
+  {{- with .Values.podAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       {{- include "irrigator.selectorLabels" . | nindent 6 }}
-      control-plane: controller-manager
   template:
     metadata:
-      annotations:
-        kubectl.kubernetes.io/default-container: manager
-        {{- with .Values.podAnnotations }}
-        {{- toYaml . | nindent 8 }}
-        {{- end }}
       labels:
         {{- include "irrigator.selectorLabels" . | nindent 8 }}
-        control-plane: controller-manager
-    spec:
-      {{- with .Values.imagePullSecrets }}
-      imagePullSecrets:
+      {{- with .Values.podAnnotations }}
+      annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    spec:
       serviceAccountName: {{ include "irrigator.serviceAccountName" . }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-      - name: manager
+      - name: irrigator
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        command:
-          - /manager
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+          readOnlyRootFilesystem: true
         args:
-          {{- if .Values.operator.leaderElection }}
-          - --leader-elect
-          {{- end }}
-          - --health-probe-bind-address=:{{ .Values.operator.health.port }}
-          {{- if not .Values.operator.installCRDs }}
-          - --install-crds=false
-          {{- end }}
-          {{- if .Values.sensorExporterAPI.url }}
-          - --alerts-api-url={{ .Values.sensorExporterAPI.url }}
-          {{- end }}
-          {{- if .Values.sensorExporterAPI.certPath }}
-          - --alerts-cert-path={{ .Values.sensorExporterAPI.certPath }}
-          {{- end }}
-          {{- if .Values.sensorExporterAPI.certFile }}
-          - --alerts-cert-name={{ .Values.sensorExporterAPI.certFile }}
-          {{- end }}
-          {{- if .Values.sensorExporterAPI.keyFile }}
-          - --alerts-cert-key={{ .Values.sensorExporterAPI.keyFile }}
-          {{- end }}
-          {{- if .Values.sensorExporterAPI.caFile }}
-          - --alerts-ca-name={{ .Values.sensorExporterAPI.caFile }}
-          {{- end }}
+        - --api-addr=:{{ .Values.ports.api }}
+        - --probe-addr=:{{ .Values.ports.probe }}
+        - --metrics-addr=:{{ .Values.ports.metrics }}
+        - --leader-election={{ .Values.controller.leaderElection }}
+        {{- if .Values.controller.leaderElectionNamespace }}
+        - --leader-election-namespace={{ .Values.controller.leaderElectionNamespace }}
+        {{- end }}
+        - --valve-controller-url={{ .Values.valveController.url }}
+        - --tls-cert=/tls/tls.crt
+        - --tls-key=/tls/tls.key
+        - --client-ca=/tls-client-ca/ca.crt
+        - --valve-client-cert=/valve-client-tls/tls.crt
+        - --valve-client-key=/valve-client-tls/tls.key
+        - --valve-server-ca=/valve-server-ca/ca.crt
         ports:
-        {{- if .Values.operator.metrics.enabled }}
-        - containerPort: {{ .Values.operator.metrics.port }}
+        - containerPort: {{ .Values.ports.api }}
+          name: api
+          protocol: TCP
+        - containerPort: {{ .Values.ports.metrics }}
           name: metrics
           protocol: TCP
-        {{- end }}
-        - containerPort: {{ .Values.operator.health.port }}
-          name: health
+        - containerPort: {{ .Values.ports.probe }}
+          name: probe
           protocol: TCP
-        securityContext:
-          {{- toYaml .Values.securityContext | nindent 12 }}
         livenessProbe:
           httpGet:
             path: /healthz
-            port: health
+            port: probe
           initialDelaySeconds: 15
           periodSeconds: 20
+          timeoutSeconds: 5
         readinessProbe:
           httpGet:
             path: /readyz
-            port: health
+            port: probe
           initialDelaySeconds: 5
           periodSeconds: 10
+          timeoutSeconds: 5
         resources:
-          {{- toYaml .Values.resources | nindent 12 }}
-        {{- if .Values.sensorExporterAPI.secretName }}
+          {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
-        - name: sensor-exporter-certs
-          mountPath: {{ .Values.sensorExporterAPI.certPath }}
-          readOnly: true
-        {{- end }}
-        env:
-        - name: LOG_LEVEL
-          value: {{ .Values.logging.level | quote }}
-        - name: LOG_FORMAT
-          value: {{ .Values.logging.format | quote }}
-      {{- if .Values.sensorExporterAPI.secretName }}
-      volumes:
-      - name: sensor-exporter-certs
-        secret:
-          secretName: {{ .Values.sensorExporterAPI.secretName }}
-          defaultMode: 0444
-      {{- end }}
+        - name: server-tls
+          mountPath: /tls
+        - name: client-ca
+          mountPath: /tls-client-ca
+        - name: valve-client-tls
+          mountPath: /valve-client-tls
+        - name: valve-server-ca
+          mountPath: /valve-server-ca
+      terminationGracePeriodSeconds: 30
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -113,4 +100,16 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      terminationGracePeriodSeconds: 10
+      volumes:
+      - name: server-tls
+        secret:
+          secretName: {{ include "irrigator.tlsSecretName" . }}
+      - name: client-ca
+        secret:
+          secretName: {{ required "tls.clientCASecretName is required" .Values.tls.clientCASecretName }}
+      - name: valve-client-tls
+        secret:
+          secretName: {{ required "valveController.clientCertSecretName is required" .Values.valveController.clientCertSecretName }}
+      - name: valve-server-ca
+        secret:
+          secretName: {{ required "valveController.serverCASecretName is required" .Values.valveController.serverCASecretName }}

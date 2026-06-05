@@ -1,0 +1,14 @@
+apiVersion: iot.hauke.cloud/v1alpha1
+kind: Irrigationchedule
+metadata:
+  name: valve-center-1
+  namespace: iot
+spec:
+  cronExpression: 5 8,14,20 * * * # set by user
+  valveRef: # set by user
+    name: valve-right
+    namespace:
+  dryRun: false # set by user
+  durationSeconds: 10 # duration of valves opened
+  enabled: true # set by user - default: true
+  timeZone: Europe/Berlin # set by user - default: Europe/Berlin

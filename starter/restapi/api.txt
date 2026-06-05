@@ -1,0 +1,4 @@
+GET schedules # get list of all managed schedules
+GET schedules/<valve> # get valve details
+
+PUT schedules/<valve>/execute # force schedule to execute ignoring regex

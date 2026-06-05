@@ -1,0 +1,308 @@
+openapi: "3.0.3"
+info:
+  title: Irrigator API
+  version: "0.1.0"
+  description: |
+    REST API for the irrigator controller. All routes except `/api/v1/healthz` and
+    `/api/v1/readyz` require mutual TLS — the client must present a certificate
+    signed by the configured client CA.
+
+servers:
+  - url: https://{host}:{port}
+    variables:
+      host:
+        default: irrigator.iot.svc.cluster.local
+      port:
+        default: "8443"
+
+security:
+  - mtls: []
+
+paths:
+  /api/v1/healthz:
+    get:
+      summary: Liveness probe
+      operationId: healthz
+      security: []
+      tags: [probe]
+      responses:
+        "200":
+          description: Controller process is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOK"
+
+  /api/v1/readyz:
+    get:
+      summary: Readiness probe
+      operationId: readyz
+      security: []
+      tags: [probe]
+      responses:
+        "200":
+          description: Controller is ready.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusOK"
+
+  /api/v1/schedules:
+    get:
+      summary: List all managed irrigation schedules
+      operationId: listSchedules
+      tags: [schedules]
+      parameters:
+        - $ref: "#/components/parameters/NamespaceQuery"
+        - $ref: "#/components/parameters/NamespaceHeader"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Collection of IrrigationSchedule resources.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleCollection"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/schedules/{name}:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleName"
+      - $ref: "#/components/parameters/NamespaceQuery"
+      - $ref: "#/components/parameters/NamespaceHeader"
+
+    get:
+      summary: Get a single irrigation schedule
+      operationId: getSchedule
+      tags: [schedules]
+      responses:
+        "200":
+          description: IrrigationSchedule detail.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/schedules/{name}/execute:
+    parameters:
+      - $ref: "#/components/parameters/ScheduleName"
+      - $ref: "#/components/parameters/NamespaceQuery"
+      - $ref: "#/components/parameters/NamespaceHeader"
+
+    put:
+      summary: Force-execute a schedule immediately, bypassing the cron timer
+      operationId: executeSchedule
+      tags: [schedules]
+      responses:
+        "202":
+          description: Execution triggered; returns the updated schedule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ValveUnreachable"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    mtls:
+      type: mutualTLS
+      description: Client certificate signed by the configured client CA.
+
+  parameters:
+    ScheduleName:
+      name: name
+      in: path
+      required: true
+      description: IrrigationSchedule CR name (`metadata.name`).
+      schema:
+        type: string
+        example: valve-center-morning
+
+    NamespaceQuery:
+      name: namespace
+      in: query
+      required: false
+      description: Kubernetes namespace. Disambiguates schedules with the same name across namespaces.
+      schema:
+        type: string
+        example: iot
+
+    NamespaceHeader:
+      name: X-Namespace
+      in: header
+      required: false
+      description: Alternative to the `namespace` query parameter.
+      schema:
+        type: string
+        example: iot
+
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 20
+        maximum: 100
+
+    Offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+
+  schemas:
+    Schedule:
+      type: object
+      description: Reflects the IrrigationSchedule Kubernetes CR.
+      properties:
+        metadata:
+          type: object
+        spec:
+          $ref: "#/components/schemas/ScheduleSpec"
+        status:
+          $ref: "#/components/schemas/ScheduleStatus"
+
+    ScheduleSpec:
+      type: object
+      required: [cronExpression, valveRef, durationSeconds, enabled, dryRun]
+      properties:
+        cronExpression:
+          type: string
+          example: "5 8,14,20 * * *"
+        valveRef:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              example: valve-center
+            namespace:
+              type: string
+              example: iot
+        durationSeconds:
+          type: integer
+          format: int32
+          example: 600
+        enabled:
+          type: boolean
+          example: true
+        dryRun:
+          type: boolean
+          example: false
+        timeZone:
+          type: string
+          example: Europe/Berlin
+
+    ScheduleStatus:
+      type: object
+      properties:
+        lastExecutionTime:
+          type: string
+          format: date-time
+        nextExecutionTime:
+          type: string
+          format: date-time
+        lastExecutionResult:
+          type: string
+          enum: [success, failed, dry-run]
+        executionCount:
+          type: integer
+          format: int64
+        conditions:
+          type: array
+          items:
+            type: object
+
+    ScheduleCollection:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Schedule"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    StatusOK:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: ok
+
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum:
+            - SCHEDULE_NOT_FOUND
+            - VALVE_NOT_FOUND
+            - VALVE_DISABLED
+            - VALVE_UNREACHABLE
+            - UNAUTHORIZED
+            - INTERNAL_ERROR
+
+  responses:
+    Unauthorized:
+      description: Client certificate missing or not signed by the trusted CA.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    NotFound:
+      description: Schedule not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    ValveUnreachable:
+      description: Valve-controller could not be reached.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+tags:
+  - name: schedules
+    description: Irrigation schedule management and force-execution.
+  - name: probe
+    description: Liveness and readiness probes (no auth required).

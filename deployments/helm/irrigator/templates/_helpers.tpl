@@ -22,14 +22,7 @@ Create a default fully qualified app name.
 {{- end }}
 
 {{/*
-Create chart name and version as used by the chart label.
-*/}}
-{{- define "irrigator.chart" -}}
-{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
-{{- end }}
-
-{{/*
-Common labels
+Create chart labels.
 */}}
 {{- define "irrigator.labels" -}}
 helm.sh/chart: {{ include "irrigator.chart" . }}
@@ -40,21 +33,34 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
-{{/*
-Selector labels
-*/}}
 {{- define "irrigator.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "irrigator.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{- define "irrigator.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
 {{/*
-Create the name of the service account to use
+ServiceAccount name.
 */}}
 {{- define "irrigator.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "irrigator.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+TLS secret name for the REST API server certificate.
+Uses existingSecret when set, otherwise a generated name.
+*/}}
+{{- define "irrigator.tlsSecretName" -}}
+{{- if .Values.tls.existingSecret }}
+{{- .Values.tls.existingSecret }}
+{{- else }}
+{{- printf "%s-tls" (include "irrigator.fullname" .) }}
 {{- end }}
 {{- end }}

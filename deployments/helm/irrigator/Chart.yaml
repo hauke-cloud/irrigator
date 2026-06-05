@@ -1,25 +1,17 @@
 apiVersion: v2
 name: irrigator
-description: A Helm chart for Irrigator - Kubernetes operator for automated irrigation scheduling
+description: Kubernetes controller that manages IrrigationSchedule CRDs and controls water valves via the valve-controller REST API.
 type: application
-version: 0.2.0
-appVersion: "2.0.0"
+version: 0.1.0
+appVersion: "0.1.0"
 keywords:
-  - mqtt
   - iot
   - irrigation
-  - scheduling
-  - valve
-  - tasmota
-  - zigbee
   - kubernetes
-  - operator
+  - controller
 home: https://github.com/hauke-cloud/irrigator
 sources:
   - https://github.com/hauke-cloud/irrigator
 maintainers:
-  - name: hauke-cloud
-    email: contact@hauke.cloud
-dependencies: []
-# This chart now requires kubernetes-iot-api CRDs to be installed
-# CRDs can be auto-installed by the operator or by mqtt-sensor-exporter
+  - name: Hauke Mettendorf
+    email: hauke@mettendorf.it
