@@ -52,10 +52,13 @@ jobs:
 
           # Pre-build: Generate CRDs and manifests
           pre-build-command: |
-            echo "Generating CRDs and manifests..."
+            go mod tidy
+            go mod download
+            make install-tools
             make generate
             make manifests
             make setup-envtest
+            gofmt -s -w .
 
           # Build Arguments
           build-args: |
