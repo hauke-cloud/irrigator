@@ -61,6 +61,20 @@ resources:
 crds:
   install: true
 
+serviceMonitor:
+  enabled: false
+  namespace: "" # defaults to Release.Namespace
+  interval: 30s
+  scrapeTimeout: 10s
+  # Extra labels added to the ServiceMonitor metadata (e.g. for serviceMonitorSelector matching).
+  additionalLabels: {}
+
+prometheusRules:
+  enabled: false
+  namespace: "" # defaults to Release.Namespace
+  # Extra labels added to the PrometheusRule metadata (e.g. for ruleSelector matching).
+  additionalLabels: {}
+
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []
